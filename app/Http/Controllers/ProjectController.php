@@ -52,9 +52,13 @@ class ProjectController extends Controller
         $projects = $query->orderBy('created_at', 'desc')
             ->skip($skip)->take($limit)
             ->with(['materials:id,name,totalPrice,purchaseDate,projectId',
-                    'cashOuts:id,amount,date,projectId',
+                    'cashOuts:id,amount,expenseCategory,date,projectId',
                     'cashIns:id,amount,date,projectId',
-                    'labours:id,name,dailyWage,projectId'])
+                    'labours:id,name,dailyWage,projectId',
+                    'projectVendors:id,projectId,vendorId,contractAmount,paidAmount,dueAmount',
+                    'projectVendors.vendor:id,name,workType',
+                    'projectSuppliers:id,projectId,supplierId,contractAmount,paidAmount,dueAmount',
+                    'projectSuppliers.supplier:id,name'])
             ->get();
 
         return $this->apiPaginated('projects', $projects, $total, $page, $limit,

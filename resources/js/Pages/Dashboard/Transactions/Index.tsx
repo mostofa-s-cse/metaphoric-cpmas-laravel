@@ -100,6 +100,7 @@ export default function TransactionsPage() {
 
   const [activeTab, setActiveTab] = useState<'cashin' | 'cashout'>('cashin');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [projectFilter, setProjectFilter] = useState('ALL');
   const [summary, setSummary] = useState<TransactionSummary | null>(null);
 
@@ -182,7 +183,7 @@ export default function TransactionsPage() {
         params: {
           page,
           limit,
-          search: searchTerm,
+          search: debouncedSearchTerm,
           projectId: projectFilter !== 'ALL' ? projectFilter : undefined,
         }
       });
@@ -231,7 +232,7 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     fetchCashTransactions();
-  }, [page, limit, activeTab, projectFilter]);
+  }, [page, limit, activeTab, projectFilter, debouncedSearchTerm]);
 
   useEffect(() => {
     fetchSummary();
@@ -243,8 +244,8 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
       setPage(1);
-      fetchCashTransactions();
     }, 400);
     return () => clearTimeout(timer);
   }, [searchTerm]);

@@ -68,6 +68,7 @@ export default function VendorsPage() {
 
   // Search filter state
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [projectFilter, setProjectFilter] = useState('ALL');
 
   // Pagination state
@@ -124,7 +125,7 @@ export default function VendorsPage() {
         params: {
           page,
           limit,
-          search: searchTerm,
+          search: debouncedSearchTerm,
           projectId: projectFilter !== 'ALL' ? projectFilter : undefined,
         }
       });
@@ -154,13 +155,16 @@ export default function VendorsPage() {
 
   useEffect(() => {
     fetchVendors();
+  }, [page, limit, projectFilter, debouncedSearchTerm]);
+
+  useEffect(() => {
     fetchProjects();
-  }, [page, limit, projectFilter]);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
       setPage(1);
-      fetchVendors();
     }, 400);
     return () => clearTimeout(timer);
   }, [searchTerm]);

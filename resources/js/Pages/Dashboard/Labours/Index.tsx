@@ -66,6 +66,7 @@ export default function LaboursPage() {
   const [fetchError, setFetchError] = useState(false);
 
   const [searchLabour, setSearchLabour] = useState('');
+  const [debouncedSearchLabour, setDebouncedSearchLabour] = useState('');
 
   const [labPage, setLabPage] = useState(1);
   const [labLimit, setLabLimit] = useState(10);
@@ -83,8 +84,9 @@ export default function LaboursPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [labourToDelete, setLabourToDelete] = useState<string | null>(null);
 
-  // Every cash-out, fetched in full for the per-labour "total paid" figure.
-  const [allCashOuts, setAllCashOuts] = useState<any[]>([]);
+  // Per-labour total wages paid, scoped server-side to the current
+  // project/month filter — avoids pulling every cash-out client-side.
+  const [wageTotals, setWageTotals] = useState<Record<string, number>>({});
 
   // Pay Wage modal
   const [isWageModalOpen, setIsWageModalOpen] = useState(false);
@@ -124,7 +126,7 @@ export default function LaboursPage() {
     setIsFetchingLabours(true);
     try {
       const res = await axios.get('/api/labours', {
-        params: { page: labPage, limit: labLimit, search: searchLabour }
+        params: { page: labPage, limit: labLimit, search: debouncedSearchLabour }
       });
       if (res.data.status === 'success') {
         setLabours(res.data.data.labours || []);
@@ -148,11 +150,13 @@ export default function LaboursPage() {
     }
   };
 
-  const fetchAllCashOuts = async () => {
+  const fetchWageTotals = async () => {
     try {
-      const res = await axios.get('/api/transactions/cash-out', { params: { limit: 1000 } });
+      const res = await axios.get('/api/labours/wage-totals', {
+        params: { projectId: wagesProjectFilter, month: wagesMonthFilter || undefined },
+      });
       if (res.data.status === 'success') {
-        setAllCashOuts(res.data.data.cashOuts || []);
+        setWageTotals(res.data.data.totals || {});
       }
     } catch (err) {
       // silent
@@ -162,9 +166,9 @@ export default function LaboursPage() {
   const fetchWageHistory = async (labourId: string) => {
     setIsFetchingWageHistory(true);
     try {
-      const res = await axios.get('/api/transactions/cash-out', { params: { limit: 1000 } });
+      const res = await axios.get('/api/transactions/cash-out', { params: { labourId, limit: 200 } });
       if (res.data.status === 'success') {
-        setWageHistory((res.data.data.cashOuts || []).filter((co: any) => co.labourId === labourId));
+        setWageHistory(res.data.data.cashOuts || []);
       }
     } catch (err) {
       // silent
@@ -199,17 +203,20 @@ export default function LaboursPage() {
 
   useEffect(() => {
     fetchLabours();
-    fetchProjects();
-  }, [labPage, labLimit]);
+  }, [labPage, labLimit, debouncedSearchLabour]);
 
   useEffect(() => {
-    fetchAllCashOuts();
+    fetchProjects();
   }, []);
 
   useEffect(() => {
+    fetchWageTotals();
+  }, [wagesProjectFilter, wagesMonthFilter]);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
+      setDebouncedSearchLabour(searchLabour);
       setLabPage(1);
-      fetchLabours();
     }, 400);
     return () => clearTimeout(timer);
   }, [searchLabour]);
@@ -356,7 +363,7 @@ export default function LaboursPage() {
         { successMessage: `Successfully paid ${formatCurrencyLocal(amount)} wages to ${selectedLabourForWage.name}` }
       );
       fetchWageHistory(selectedLabourForWage.id);
-      fetchAllCashOuts();
+      fetchWageTotals();
       setIsWageModalOpen(false);
     } catch (err) {
       // handled
@@ -753,9 +760,7 @@ export default function LaboursPage() {
                       {labours
                         .filter((l) => wagesProjectFilter === 'ALL' || l.projectId === wagesProjectFilter)
                         .map((lab) => {
-                        const totalPaid = allCashOuts
-                          .filter((co: any) => co.labourId === lab.id && (!wagesMonthFilter || co.date.slice(0, 7) === wagesMonthFilter))
-                          .reduce((s: number, co: any) => s + (co.amount || 0), 0);
+                        const totalPaid = wageTotals[lab.id] || 0;
                         return (
                           <tr key={lab.id} className="hover:bg-slate-800/20 transition-colors">
                             <td className="p-4 font-semibold text-slate-200">{lab.name}</td>

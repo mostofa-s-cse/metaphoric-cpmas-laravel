@@ -162,13 +162,14 @@ class SupplierController extends Controller
             // Materials reference suppliers with an onDelete('restrict') constraint,
             // so they must be removed explicitly before the supplier (matches the
             // "This will permanently remove all material purchases..." confirmation
-            // copy shown to the user). Deleted individually (not a bulk query) so
-            // Auditable model events fire for each row, same pattern as
-            // MaterialController::destroy().
-            $supplier->materials()->get()->each(function ($material) {
-                CashOut::where('materialId', $material->id)->get()->each->delete();
-                $material->delete();
-            });
+            // copy shown to the user). Rows are still deleted individually (not a
+            // bulk whereIn()->delete()) so Auditable model events fire for each one
+            // — but the *lookups* are batched into a single query each instead of
+            // one CashOut query per material, so a supplier with N materials costs
+            // 2 find-queries + N+M deletes instead of N find-queries + N+M deletes.
+            $materials = $supplier->materials()->get();
+            CashOut::whereIn('materialId', $materials->pluck('id'))->get()->each->delete();
+            $materials->each->delete();
 
             $supplier->delete();
         });

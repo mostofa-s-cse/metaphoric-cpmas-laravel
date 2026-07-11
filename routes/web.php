@@ -152,6 +152,7 @@ Route::middleware(['auth'])->prefix('api')->group(function () {
     Route::post('/employees/{employeeId}/salaries', [EmployeeController::class, 'processSalary']);
 
     // Labours
+    Route::get('/labours/wage-totals', [LabourController::class, 'wageTotals']);
     Route::get('/labours', [LabourController::class, 'index']);
     Route::post('/labours', [LabourController::class, 'store']);
     Route::get('/labours/{id}', [LabourController::class, 'show']);

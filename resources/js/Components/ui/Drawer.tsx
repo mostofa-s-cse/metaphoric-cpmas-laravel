@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface DrawerProps {
@@ -54,7 +55,11 @@ export function Drawer({
 
   if (!open) return null;
 
-  return (
+  // Portaled to document.body so this overlay never inherits layout from
+  // wherever it's mounted in the page tree — e.g. a `space-y-*` ancestor
+  // adds margin-top to non-first siblings regardless of `position`, which
+  // was visibly shifting this fixed overlay down from the true viewport top.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex justify-end"
       role="dialog"
@@ -94,6 +99,7 @@ export function Drawer({
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

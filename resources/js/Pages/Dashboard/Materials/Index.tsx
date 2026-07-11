@@ -86,6 +86,7 @@ export default function MaterialsPage() {
 
   // Search filter state
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
 
   // Pagination state
   const [page, setPage] = useState(1);
@@ -139,7 +140,7 @@ export default function MaterialsPage() {
         params: {
           page,
           limit,
-          search: searchTerm,
+          search: debouncedSearchTerm,
         }
       });
       if (res.data.status === 'success') {
@@ -170,7 +171,7 @@ export default function MaterialsPage() {
 
   useEffect(() => {
     fetchMaterials();
-  }, [page, limit]);
+  }, [page, limit, debouncedSearchTerm]);
 
   useEffect(() => {
     fetchDependencies();
@@ -178,8 +179,8 @@ export default function MaterialsPage() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
       setPage(1);
-      fetchMaterials();
     }, 400);
     return () => clearTimeout(timer);
   }, [searchTerm]);
@@ -294,8 +295,8 @@ export default function MaterialsPage() {
         {/* Header */}
         <div className="flex flex-col items-start sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-slate-350 flex items-center gap-2">
-              <PackageSearch className="h-5.5 w-5.5 text-cyan-400" />
+            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-slate-400 flex items-center gap-2">
+              <PackageSearch className="h-6 w-6 text-cyan-400" />
               Inventory &amp; Materials Purchase Log
             </h1>
             <p className="text-slate-500 text-xs mt-0.5">
@@ -306,7 +307,7 @@ export default function MaterialsPage() {
           {user && user.role !== 'ACCOUNTANT' && (
             <Button
               onClick={handleOpenCreate}
-              icon={<Plus className="h-4.5 w-4.5" />}
+              icon={<Plus className="h-5 w-5" />}
             >
               Log Material Purchase
             </Button>
@@ -330,7 +331,7 @@ export default function MaterialsPage() {
         ) : fetchError ? (
           <div className="h-96 border border-slate-800/80 rounded-2xl flex flex-col items-center justify-center bg-slate-900/10 text-center px-6">
             <PackageSearch className="h-10 w-10 text-rose-500 mb-3" />
-            <p className="text-slate-350 text-sm font-semibold">Failed to fetch materials ledger</p>
+            <p className="text-slate-400 text-sm font-semibold">Failed to fetch materials ledger</p>
             <p className="text-slate-500 text-xs mt-1">Please try refreshing the page.</p>
           </div>
         ) : materials.length === 0 ? (
@@ -349,52 +350,52 @@ export default function MaterialsPage() {
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-slate-800 bg-slate-900/50 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                    <th className="py-4.5 px-6">Material details</th>
-                    <th className="py-4.5 px-4">Project Assigned</th>
-                    <th className="py-4.5 px-4">Supplier Vendor</th>
-                    <th className="py-4.5 px-4">Invoice / Challan</th>
-                    <th className="py-4.5 px-4">Qty &amp; Unit Price</th>
-                    <th className="py-4.5 px-4">Total Cost</th>
-                    <th className="py-4.5 px-4">Date logged</th>
-                    {user && user.role !== 'ACCOUNTANT' && <th className="py-4.5 px-6 text-right">Actions</th>}
+                    <th className="py-4 px-6">Material details</th>
+                    <th className="py-4 px-4">Project Assigned</th>
+                    <th className="py-4 px-4">Supplier Vendor</th>
+                    <th className="py-4 px-4">Invoice / Challan</th>
+                    <th className="py-4 px-4">Qty &amp; Unit Price</th>
+                    <th className="py-4 px-4">Total Cost</th>
+                    <th className="py-4 px-4">Date logged</th>
+                    {user && user.role !== 'ACCOUNTANT' && <th className="py-4 px-6 text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800 text-xs">
                   {materials.map((mat) => (
                     <tr key={mat.id} className="hover:bg-slate-900/40 transition-colors">
-                      <td className="py-4.5 px-6 max-w-[220px]">
+                      <td className="py-4 px-6 max-w-[220px]">
                         <span className="block truncate text-[10px] font-bold text-cyan-400 uppercase tracking-widest font-mono">
                           {mat.category}
                         </span>
                         <h4 className="font-bold text-slate-200 mt-0.5 truncate">{mat.name}</h4>
                       </td>
-                      <td className="py-4.5 px-4">
+                      <td className="py-4 px-4">
                         <div className="flex items-center gap-1.5 max-w-[140px]">
                           <FolderKanban className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                           <span className="truncate text-slate-300 font-semibold">{mat.project?.name}</span>
                         </div>
                       </td>
-                      <td className="py-4.5 px-4">
+                      <td className="py-4 px-4">
                         <div className="flex items-center gap-1.5 max-w-[140px]">
                           <Truck className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                          <span className="truncate text-slate-350">{mat.supplier?.name}</span>
+                          <span className="truncate text-slate-400">{mat.supplier?.name}</span>
                         </div>
                       </td>
-                      <td className="py-4.5 px-4 text-slate-400 font-mono text-[10px]">
+                      <td className="py-4 px-4 text-slate-400 font-mono text-[10px]">
                         {mat.invoiceNumber || '—'}
                       </td>
-                      <td className="py-4.5 px-4 text-slate-400">
+                      <td className="py-4 px-4 text-slate-400">
                         <span className="text-slate-200 font-bold">{mat.quantity}</span> {mat.unit}{' '}
-                        <span className="text-[10px] text-slate-650 block mt-0.5 animate-pulse">
+                        <span className="text-[10px] text-slate-700 block mt-0.5 animate-pulse">
                           @ {formatCurrencyLocal(mat.unitPrice)}
                         </span>
                       </td>
-                      <td className="py-4.5 px-4 font-bold text-slate-200">{formatCurrencyLocal(mat.totalPrice)}</td>
-                      <td className="py-4.5 px-4 text-slate-450 font-mono text-[10px]">
+                      <td className="py-4 px-4 font-bold text-slate-200">{formatCurrencyLocal(mat.totalPrice)}</td>
+                      <td className="py-4 px-4 text-slate-500 font-mono text-[10px]">
                         {new Date(mat.purchaseDate).toLocaleDateString()}
                       </td>
                       {user && user.role !== 'ACCOUNTANT' && (
-                        <td className="py-4.5 px-6 text-right">
+                        <td className="py-4 px-6 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => handleOpenEdit(mat)}
@@ -435,7 +436,7 @@ export default function MaterialsPage() {
           onClose={() => setIsModalOpen(false)}
           title={
             <div className="flex items-center gap-2">
-              <PackageSearch className="h-4.5 w-4.5 text-cyan-400" />
+              <PackageSearch className="h-5 w-5 text-cyan-400" />
               {modalMode === 'create' ? 'Log Material Purchase Invoice' : 'Edit Material Purchase Record'}
             </div>
           }
@@ -498,7 +499,7 @@ export default function MaterialsPage() {
                   {...register('supplierId')}
                   error={errors.supplierId?.message}
                 >
-                  <option value="" disabled className="bg-slate-900 text-slate-250">Select Supplier...</option>
+                  <option value="" disabled className="bg-slate-900 text-slate-300">Select Supplier...</option>
                   {suppliers.map((s) => (
                     <option key={s.id} value={s.id} className="bg-slate-900 text-slate-200">
                       {s.name}{!s.phoneNumber ? ' (Other Entry)' : ''}
@@ -523,7 +524,7 @@ export default function MaterialsPage() {
                   {...register('projectId')}
                   error={errors.projectId?.message}
                 >
-                  <option value="" disabled className="bg-slate-900 text-slate-250">Select Project...</option>
+                  <option value="" disabled className="bg-slate-900 text-slate-300">Select Project...</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id} className="bg-slate-900 text-slate-200">
                       {p.code} - {p.name}

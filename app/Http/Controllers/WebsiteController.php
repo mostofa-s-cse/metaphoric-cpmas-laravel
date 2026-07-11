@@ -260,33 +260,46 @@ class WebsiteController extends Controller
     }
 
     /**
-     * Unfiltered admin list of ALL services.
-     * Mirrors: src/app/api/website/services/route.ts GET handler.
+     * Every CMS resource (Service, Portfolio, Team, TrustBadge, Testimonial,
+     * FAQ) shares the exact same index/show/update/destroy shape — only the
+     * model class and response wording differ. store() is left per-resource
+     * since each has distinct validation rules.
      */
+    private function cmsIndex(string $modelClass, string $label, string $path)
+    {
+        $items = $modelClass::orderBy('order')->get();
+        return $this->apiSuccess($items, "{$label} retrieved successfully", $path);
+    }
+
+    private function cmsShow(string $modelClass, string $id, string $path)
+    {
+        $item = $modelClass::findOrFail($id);
+        return $this->apiSuccess($item, 'Retrieved successfully', $path);
+    }
+
+    private function cmsUpdate(Request $request, string $modelClass, string $id, string $itemKey, string $label, string $path)
+    {
+        $item = $modelClass::findOrFail($id);
+        $item->update($request->all());
+        return $this->apiSuccess([$itemKey => $item->fresh()], "{$label} updated", $path);
+    }
+
+    private function cmsDestroy(string $modelClass, string $id, string $label, string $path)
+    {
+        $modelClass::findOrFail($id)->delete();
+        return $this->apiSuccess(null, "{$label} deleted", $path);
+    }
+
+    // ─── Services ─────────────────────────────────────────────────────────────
+
     public function getServices()
     {
-        $services = WebsiteService::orderBy('order')->get();
-        return $this->apiSuccess($services, 'services retrieved successfully', '/website/services');
+        return $this->cmsIndex(WebsiteService::class, 'services', '/website/services');
     }
 
-    /**
-     * Unfiltered admin list of ALL portfolio items.
-     * Mirrors: src/app/api/website/portfolio/route.ts GET handler.
-     */
-    public function getPortfolio()
-    {
-        $portfolio = WebsitePortfolio::orderBy('order')->get();
-        return $this->apiSuccess($portfolio, 'portfolio retrieved successfully', '/website/portfolio');
-    }
-
-    /**
-     * Single-item GET for a service.
-     * Mirrors: src/app/api/website/services/[id]/route.ts GET handler.
-     */
     public function showService(string $id)
     {
-        $service = WebsiteService::findOrFail($id);
-        return $this->apiSuccess($service, 'Retrieved successfully', '/website/services');
+        return $this->cmsShow(WebsiteService::class, $id, '/website/services');
     }
 
     public function storeService(Request $request)
@@ -303,25 +316,24 @@ class WebsiteController extends Controller
 
     public function updateService(Request $request, string $id)
     {
-        $service = WebsiteService::findOrFail($id);
-        $service->update($request->all());
-        return $this->apiSuccess(['service' => $service->fresh()], 'Service updated', '/website/services');
+        return $this->cmsUpdate($request, WebsiteService::class, $id, 'service', 'Service', '/website/services');
     }
 
     public function destroyService(string $id)
     {
-        WebsiteService::findOrFail($id)->delete();
-        return $this->apiSuccess(null, 'Service deleted', '/website/services');
+        return $this->cmsDestroy(WebsiteService::class, $id, 'Service', '/website/services');
     }
 
-    /**
-     * Single-item GET for a portfolio item.
-     * Mirrors: src/app/api/website/portfolio/[id]/route.ts GET handler.
-     */
+    // ─── Portfolio ────────────────────────────────────────────────────────────
+
+    public function getPortfolio()
+    {
+        return $this->cmsIndex(WebsitePortfolio::class, 'portfolio', '/website/portfolio');
+    }
+
     public function showPortfolio(string $id)
     {
-        $portfolio = WebsitePortfolio::findOrFail($id);
-        return $this->apiSuccess($portfolio, 'Retrieved successfully', '/website/portfolio');
+        return $this->cmsShow(WebsitePortfolio::class, $id, '/website/portfolio');
     }
 
     public function storePortfolio(Request $request)
@@ -339,33 +351,24 @@ class WebsiteController extends Controller
 
     public function updatePortfolio(Request $request, string $id)
     {
-        $portfolio = WebsitePortfolio::findOrFail($id);
-        $portfolio->update($request->all());
-        return $this->apiSuccess(['portfolio' => $portfolio->fresh()], 'Portfolio updated', '/website/portfolio');
+        return $this->cmsUpdate($request, WebsitePortfolio::class, $id, 'portfolio', 'Portfolio', '/website/portfolio');
     }
 
     public function destroyPortfolio(string $id)
     {
-        WebsitePortfolio::findOrFail($id)->delete();
-        return $this->apiSuccess(null, 'Portfolio deleted', '/website/portfolio');
+        return $this->cmsDestroy(WebsitePortfolio::class, $id, 'Portfolio', '/website/portfolio');
     }
 
     // ─── Team ─────────────────────────────────────────────────────────────────
 
     public function getTeam()
     {
-        $team = WebsiteTeam::orderBy('order')->get();
-        return $this->apiSuccess($team, 'team retrieved successfully', '/website/team');
+        return $this->cmsIndex(WebsiteTeam::class, 'team', '/website/team');
     }
 
-    /**
-     * Single-item GET for a team member.
-     * Mirrors: src/app/api/website/team/[id]/route.ts GET handler.
-     */
     public function showTeamMember(string $id)
     {
-        $member = WebsiteTeam::findOrFail($id);
-        return $this->apiSuccess($member, 'Retrieved successfully', '/website/team');
+        return $this->cmsShow(WebsiteTeam::class, $id, '/website/team');
     }
 
     public function storeTeam(Request $request)
@@ -384,33 +387,24 @@ class WebsiteController extends Controller
 
     public function updateTeam(Request $request, string $id)
     {
-        $member = WebsiteTeam::findOrFail($id);
-        $member->update($request->all());
-        return $this->apiSuccess(['team' => $member->fresh()], 'Team member updated', '/website/team');
+        return $this->cmsUpdate($request, WebsiteTeam::class, $id, 'team', 'Team member', '/website/team');
     }
 
     public function destroyTeam(string $id)
     {
-        WebsiteTeam::findOrFail($id)->delete();
-        return $this->apiSuccess(null, 'Team member deleted', '/website/team');
+        return $this->cmsDestroy(WebsiteTeam::class, $id, 'Team member', '/website/team');
     }
 
     // ─── Trust Badges ─────────────────────────────────────────────────────────
 
     public function getTrustBadges()
     {
-        $badges = WebsiteTrustBadge::orderBy('order')->get();
-        return $this->apiSuccess($badges, 'trust retrieved successfully', '/website/trust');
+        return $this->cmsIndex(WebsiteTrustBadge::class, 'trust', '/website/trust');
     }
 
-    /**
-     * Single-item GET for a trust badge.
-     * Mirrors: src/app/api/website/trust/[id]/route.ts GET handler.
-     */
     public function showTrustBadge(string $id)
     {
-        $badge = WebsiteTrustBadge::findOrFail($id);
-        return $this->apiSuccess($badge, 'Retrieved successfully', '/website/trust');
+        return $this->cmsShow(WebsiteTrustBadge::class, $id, '/website/trust');
     }
 
     public function storeTrustBadge(Request $request)
@@ -428,33 +422,24 @@ class WebsiteController extends Controller
 
     public function updateTrustBadge(Request $request, string $id)
     {
-        $badge = WebsiteTrustBadge::findOrFail($id);
-        $badge->update($request->all());
-        return $this->apiSuccess(['trustBadge' => $badge->fresh()], 'Trust badge updated', '/website/trust');
+        return $this->cmsUpdate($request, WebsiteTrustBadge::class, $id, 'trustBadge', 'Trust badge', '/website/trust');
     }
 
     public function destroyTrustBadge(string $id)
     {
-        WebsiteTrustBadge::findOrFail($id)->delete();
-        return $this->apiSuccess(null, 'Trust badge deleted', '/website/trust');
+        return $this->cmsDestroy(WebsiteTrustBadge::class, $id, 'Trust badge', '/website/trust');
     }
 
     // ─── Testimonials ─────────────────────────────────────────────────────────
 
     public function getTestimonials()
     {
-        $testimonials = WebsiteTestimonial::orderBy('order')->get();
-        return $this->apiSuccess($testimonials, 'testimonials retrieved successfully', '/website/testimonials');
+        return $this->cmsIndex(WebsiteTestimonial::class, 'testimonials', '/website/testimonials');
     }
 
-    /**
-     * Single-item GET for a testimonial.
-     * Mirrors: src/app/api/website/testimonials/[id]/route.ts GET handler.
-     */
     public function showTestimonial(string $id)
     {
-        $testimonial = WebsiteTestimonial::findOrFail($id);
-        return $this->apiSuccess($testimonial, 'Retrieved successfully', '/website/testimonials');
+        return $this->cmsShow(WebsiteTestimonial::class, $id, '/website/testimonials');
     }
 
     public function storeTestimonial(Request $request)
@@ -473,33 +458,24 @@ class WebsiteController extends Controller
 
     public function updateTestimonial(Request $request, string $id)
     {
-        $testimonial = WebsiteTestimonial::findOrFail($id);
-        $testimonial->update($request->all());
-        return $this->apiSuccess(['testimonial' => $testimonial->fresh()], 'Testimonial updated', '/website/testimonials');
+        return $this->cmsUpdate($request, WebsiteTestimonial::class, $id, 'testimonial', 'Testimonial', '/website/testimonials');
     }
 
     public function destroyTestimonial(string $id)
     {
-        WebsiteTestimonial::findOrFail($id)->delete();
-        return $this->apiSuccess(null, 'Testimonial deleted', '/website/testimonials');
+        return $this->cmsDestroy(WebsiteTestimonial::class, $id, 'Testimonial', '/website/testimonials');
     }
 
     // ─── FAQs ─────────────────────────────────────────────────────────────────
 
     public function getFaqs()
     {
-        $faqs = WebsiteFAQ::orderBy('order')->get();
-        return $this->apiSuccess($faqs, 'faqs retrieved successfully', '/website/faqs');
+        return $this->cmsIndex(WebsiteFAQ::class, 'faqs', '/website/faqs');
     }
 
-    /**
-     * Single-item GET for a FAQ.
-     * Mirrors: src/app/api/website/faqs/[id]/route.ts GET handler.
-     */
     public function showFaq(string $id)
     {
-        $faq = WebsiteFAQ::findOrFail($id);
-        return $this->apiSuccess($faq, 'Retrieved successfully', '/website/faqs');
+        return $this->cmsShow(WebsiteFAQ::class, $id, '/website/faqs');
     }
 
     public function storeFaq(Request $request)
@@ -516,15 +492,12 @@ class WebsiteController extends Controller
 
     public function updateFaq(Request $request, string $id)
     {
-        $faq = WebsiteFAQ::findOrFail($id);
-        $faq->update($request->all());
-        return $this->apiSuccess(['faq' => $faq->fresh()], 'FAQ updated', '/website/faqs');
+        return $this->cmsUpdate($request, WebsiteFAQ::class, $id, 'faq', 'FAQ', '/website/faqs');
     }
 
     public function destroyFaq(string $id)
     {
-        WebsiteFAQ::findOrFail($id)->delete();
-        return $this->apiSuccess(null, 'FAQ deleted', '/website/faqs');
+        return $this->cmsDestroy(WebsiteFAQ::class, $id, 'FAQ', '/website/faqs');
     }
 
     public function cmsPage()

@@ -65,6 +65,7 @@ export default function DocumentsPage() {
   const { toasts, removeToast, success, error, handlePromise } = useToast();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [projectFilter, setProjectFilter] = useState('ALL');
 
@@ -123,7 +124,7 @@ export default function DocumentsPage() {
         params: {
           page,
           limit,
-          search: searchTerm,
+          search: debouncedSearchTerm,
           category: categoryFilter !== 'ALL' ? categoryFilter : undefined,
           projectId: projectFilter !== 'ALL' ? (projectFilter === 'GENERAL' ? 'null' : projectFilter) : undefined,
         }
@@ -158,7 +159,7 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     fetchDocuments();
-  }, [page, limit, categoryFilter, projectFilter]);
+  }, [page, limit, categoryFilter, projectFilter, debouncedSearchTerm]);
 
   useEffect(() => {
     fetchDependencies();
@@ -166,8 +167,8 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
       setPage(1);
-      fetchDocuments();
     }, 400);
     return () => clearTimeout(timer);
   }, [searchTerm]);

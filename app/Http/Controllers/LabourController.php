@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Labour;
 use App\Models\Attendance;
+use App\Models\CashOut;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -146,6 +147,37 @@ class LabourController extends Controller
             ->get();
 
         return $this->apiSuccess(['attendances' => $attendances], 'Attendance logs retrieved successfully', '/attendance');
+    }
+
+    /**
+     * Per-labour total wages paid, optionally scoped to a project and/or
+     * month. Used by the Wages tab instead of fetching up to 1000 cash-outs
+     * and summing client-side (which silently drops rows once the ledger
+     * exceeds that cap) — this only ever touches LABOR-category rows, which
+     * cash_outs.expenseCategory now indexes.
+     * GET /labours/wage-totals?projectId=&month=YYYY-MM
+     */
+    public function wageTotals(Request $request)
+    {
+        $query = CashOut::where('expenseCategory', 'LABOR')->whereNotNull('labourId');
+
+        $projectId = $request->query('projectId');
+        if ($projectId && $projectId !== 'ALL') {
+            $query->where('projectId', $projectId);
+        }
+
+        $month = $request->query('month');
+        if ($month) {
+            $start = Carbon::parse($month . '-01')->startOfMonth();
+            $query->where('date', '>=', $start)->where('date', '<', $start->copy()->addMonth());
+        }
+
+        $totals = [];
+        foreach ($query->get() as $cashOut) {
+            $totals[$cashOut->labourId] = ($totals[$cashOut->labourId] ?? 0) + (float) $cashOut->amount;
+        }
+
+        return $this->apiSuccess(['totals' => $totals], 'Wage totals retrieved successfully', '/labours/wage-totals');
     }
 
     public function page()

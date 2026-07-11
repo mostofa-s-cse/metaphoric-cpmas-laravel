@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Models\CashOut;
 use App\Models\Project;
 use App\Models\WebsiteSettings;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Shared Main Balance logic used by every controller that creates a CashOut
@@ -42,6 +43,20 @@ trait HasMainBalance
     }
 
     /**
+     * Sum of every project's estimatedBudget. estimatedBudget is an encrypted
+     * column so it can't be summed in SQL — this is the one place that pays
+     * the full-table-scan-and-decrypt cost; every other call site (Dashboard,
+     * Transactions summary, this trait) reuses the cached value instead of
+     * repeating the scan. Invalidated by Project::booted() on save/delete.
+     */
+    private function totalProjectBudget(): float
+    {
+        return Cache::remember('main_balance:total_project_budget', now()->addDay(), function () {
+            return (float) Project::all()->sum('estimatedBudget');
+        });
+    }
+
+    /**
      * Balance available for an expense. Draws from the shared main balance
      * (configured % of all projects' budgets, minus every general expense and
      * every expense whose category is configured to draw from main balance)
@@ -57,7 +72,7 @@ trait HasMainBalance
         $drawsFromMain = !$projectId || $this->isMainBalanceCategory($category, $config);
 
         if ($drawsFromMain) {
-            $allocated = (float) Project::all()->sum('estimatedBudget') * $config['percentage'];
+            $allocated = $this->totalProjectBudget() * $config['percentage'];
             $spentQuery = CashOut::where(function ($q) use ($config) {
                 $q->whereNull('projectId');
                 if (!empty($config['categories'])) {

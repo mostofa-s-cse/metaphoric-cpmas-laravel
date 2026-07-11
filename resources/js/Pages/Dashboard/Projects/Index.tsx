@@ -66,6 +66,8 @@ interface ApiProject {
   materials?: any[];
   labours?: any[];
   documents?: any[];
+  projectVendors?: { id: string; contractAmount: number; paidAmount: number; dueAmount: number; vendor?: { id: string; name: string; workType: string } }[];
+  projectSuppliers?: { id: string; contractAmount: number; paidAmount: number; dueAmount: number; supplier?: { id: string; name: string } }[];
 }
 
 export default function ProjectsPage() {
@@ -95,6 +97,7 @@ export default function ProjectsPage() {
 
   // Filter & Search states
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   // Pagination state
@@ -153,7 +156,7 @@ export default function ProjectsPage() {
         params: {
           page,
           limit,
-          search: searchTerm,
+          search: debouncedSearchTerm,
           status: statusFilter !== 'ALL' ? statusFilter : undefined
         }
       });
@@ -172,23 +175,14 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     fetchProjects();
-  }, [page, limit, statusFilter]);
+  }, [page, limit, statusFilter, debouncedSearchTerm]);
 
-  // Handle local searching (debouncing search is preferred, but simple search trigger on change or hit enter works. We refetch when searchTerm changes but with debouncing or just when user finishes typing)
   useEffect(() => {
     const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
       setPage(1);
-      fetchProjects();
-    }, 4000000000000000); // Actually let's just trigger search manually or with a simple timeout. Let's do 400ms.
-    
-    const searchTimer = setTimeout(() => {
-      setPage(1);
-      fetchProjects();
     }, 400);
-
-    return () => {
-      clearTimeout(searchTimer);
-    };
+    return () => clearTimeout(timer);
   }, [searchTerm]);
 
   // Track selected project updates when projects list refreshes
@@ -402,7 +396,7 @@ export default function ProjectsPage() {
       case 'SUPPLYING':
         return 'text-teal-400 border-teal-500/20 bg-teal-500/5';
       default:
-        return 'text-slate-450 border-slate-500/20 bg-slate-500/5';
+        return 'text-slate-500 border-slate-500/20 bg-slate-500/5';
     }
   };
 
@@ -415,8 +409,8 @@ export default function ProjectsPage() {
         {/* Header section */}
         <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-slate-350 flex items-center gap-2">
-              <FolderKanban className="h-5.5 w-5.5 text-cyan-400" />
+            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-slate-400 flex items-center gap-2">
+              <FolderKanban className="h-6 w-6 text-cyan-400" />
               Construction Projects
             </h1>
             <p className="text-slate-500 text-xs mt-0.5">
@@ -430,7 +424,7 @@ export default function ProjectsPage() {
             user?.role === 'PROJECT_MANAGER') && (
             <Button
               onClick={handleOpenCreate}
-              icon={<Plus className="h-4.5 w-4.5" />}
+              icon={<Plus className="h-5 w-5" />}
             >
               New Project
             </Button>
@@ -469,7 +463,7 @@ export default function ProjectsPage() {
         ) : fetchError ? (
           <div className="h-96 border border-slate-800/80 rounded-2xl flex flex-col items-center justify-center bg-slate-900/10 text-center px-6">
             <Info className="h-10 w-10 text-rose-500 mb-3" />
-            <p className="text-slate-350 text-sm font-semibold">Failed to fetch project listings</p>
+            <p className="text-slate-400 text-sm font-semibold">Failed to fetch project listings</p>
             <p className="text-slate-500 text-xs mt-1">Please try refreshing the page.</p>
           </div>
         ) : projects.length === 0 ? (
@@ -488,14 +482,14 @@ export default function ProjectsPage() {
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-slate-800 bg-slate-900/50 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                    <th className="py-4.5 px-6">Code &amp; Name</th>
-                    <th className="py-4.5 px-4">Client Contact</th>
-                    <th className="py-4.5 px-4">Type</th>
-                    <th className="py-4.5 px-4 text-right">Total Amount</th>
-                    <th className="py-4.5 px-4 text-right">Paid Amount</th>
-                    <th className="py-4.5 px-4 text-right">Due Amount</th>
-                    <th className="py-4.5 px-4 text-center">Status</th>
-                    <th className="py-4.5 px-6 text-right">Actions</th>
+                    <th className="py-4 px-6">Code &amp; Name</th>
+                    <th className="py-4 px-4">Client Contact</th>
+                    <th className="py-4 px-4">Type</th>
+                    <th className="py-4 px-4 text-right">Total Amount</th>
+                    <th className="py-4 px-4 text-right">Paid Amount</th>
+                    <th className="py-4 px-4 text-right">Due Amount</th>
+                    <th className="py-4 px-4 text-center">Status</th>
+                    <th className="py-4 px-6 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800 text-xs">
@@ -540,7 +534,7 @@ export default function ProjectsPage() {
                           {formatCurrencyLocal(paidAmount)}
                         </td>
                         <td className="py-4 px-4 font-bold text-right">
-                          <span className={dueAmount > 0 ? 'text-rose-450' : 'text-emerald-400'}>
+                          <span className={dueAmount > 0 ? 'text-rose-500' : 'text-emerald-400'}>
                             {formatCurrencyLocal(dueAmount)}
                           </span>
                         </td>
@@ -712,7 +706,7 @@ export default function ProjectsPage() {
                 </div>
 
                 {/* Stakeholders Count */}
-                <div className="grid grid-cols-3 gap-3 text-center text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center text-xs">
                   <div className="p-3 border border-slate-800 rounded-xl bg-slate-950/20">
                     <span className="block text-[10px] text-slate-500 font-semibold uppercase">
                       Materials Purchase
@@ -731,6 +725,22 @@ export default function ProjectsPage() {
                   </div>
                   <div className="p-3 border border-slate-800 rounded-xl bg-slate-950/20">
                     <span className="block text-[10px] text-slate-500 font-semibold uppercase">
+                      Assigned Vendors
+                    </span>
+                    <span className="block text-sm font-bold text-slate-200 mt-1">
+                      {selectedProject.projectVendors?.length || 0} vendor(s)
+                    </span>
+                  </div>
+                  <div className="p-3 border border-slate-800 rounded-xl bg-slate-950/20">
+                    <span className="block text-[10px] text-slate-500 font-semibold uppercase">
+                      Assigned Suppliers
+                    </span>
+                    <span className="block text-sm font-bold text-slate-200 mt-1">
+                      {selectedProject.projectSuppliers?.length || 0} supplier(s)
+                    </span>
+                  </div>
+                  <div className="p-3 border border-slate-800 rounded-xl bg-slate-950/20">
+                    <span className="block text-[10px] text-slate-500 font-semibold uppercase">
                       Related Docs
                     </span>
                     <span className="block text-sm font-bold text-slate-200 mt-1">
@@ -738,6 +748,40 @@ export default function ProjectsPage() {
                     </span>
                   </div>
                 </div>
+
+                {/* Assigned Vendors & Suppliers — who's owed what on this project */}
+                {((selectedProject.projectVendors?.length ?? 0) > 0 || (selectedProject.projectSuppliers?.length ?? 0) > 0) && (
+                  <div className="border border-slate-800 rounded-xl p-4 bg-slate-950/10">
+                    <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest mb-3 border-b border-slate-800 pb-2">
+                      Assigned Vendors &amp; Suppliers
+                    </h3>
+                    <div className="space-y-2 text-xs">
+                      {selectedProject.projectVendors?.map((pv) => (
+                        <div key={pv.id} className="flex justify-between items-baseline">
+                          <span className="text-slate-300">
+                            {pv.vendor?.name || 'Unknown vendor'}{' '}
+                            <span className="text-slate-600">· Vendor · {pv.vendor?.workType}</span>
+                          </span>
+                          <span className="text-slate-400">
+                            Contract {formatCurrencyLocal(pv.contractAmount)} ·{' '}
+                            <span className="text-rose-400 font-bold">Due {formatCurrencyLocal(pv.dueAmount)}</span>
+                          </span>
+                        </div>
+                      ))}
+                      {selectedProject.projectSuppliers?.map((ps) => (
+                        <div key={ps.id} className="flex justify-between items-baseline">
+                          <span className="text-slate-300">
+                            {ps.supplier?.name || 'Unknown supplier'} <span className="text-slate-600">· Supplier</span>
+                          </span>
+                          <span className="text-slate-400">
+                            Contract {formatCurrencyLocal(ps.contractAmount)} ·{' '}
+                            <span className="text-rose-400 font-bold">Due {formatCurrencyLocal(ps.dueAmount)}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Basic Info */}
                 <div className="border border-slate-800 rounded-xl p-4 bg-slate-950/10 space-y-2 text-xs text-slate-400">
@@ -774,7 +818,7 @@ export default function ProjectsPage() {
           onClose={() => setIsModalOpen(false)}
           title={
             <div className="flex items-center gap-2">
-              <FolderKanban className="h-4.5 w-4.5 text-cyan-400" />
+              <FolderKanban className="h-5 w-5 text-cyan-400" />
               {modalMode === 'create' ? 'Create Construction Project' : 'Edit Project Details'}
             </div>
           }
@@ -912,7 +956,7 @@ export default function ProjectsPage() {
                     rows={3}
                     {...register('description')}
                     placeholder="Enter project summary details..."
-                    className={`w-full px-3 py-2 bg-slate-950/40 border border-slate-800 focus:border-cyan-500/80 focus:ring-cyan-500/30 rounded-xl text-slate-200 focus:outline-none focus:ring-1 text-xs transition-all placeholder:text-slate-650 shadow-inner ${
+                    className={`w-full px-3 py-2 bg-slate-950/40 border border-slate-800 focus:border-cyan-500/80 focus:ring-cyan-500/30 rounded-xl text-slate-200 focus:outline-none focus:ring-1 text-xs transition-all placeholder:text-slate-700 shadow-inner ${
                       errors.description
                         ? 'border-rose-500/60 focus:border-rose-500 focus:ring-rose-500/30'
                         : 'border-slate-800 focus:border-cyan-500 focus:ring-cyan-500/30'

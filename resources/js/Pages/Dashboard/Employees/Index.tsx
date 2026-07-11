@@ -83,6 +83,7 @@ export default function EmployeesPage() {
 
   // Search states
   const [searchEmployee, setSearchEmployee] = useState('');
+  const [debouncedSearchEmployee, setDebouncedSearchEmployee] = useState('');
 
   // Pagination states
   const [empPage, setEmpPage] = useState(1);
@@ -99,18 +100,20 @@ export default function EmployeesPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<ApiEmployee | null>(null);
 
   // Full (unpaginated) employee list — used by the Employee Salary tab (totals
-  // per employee) and by the Main Balance calculation (every employee's spend
-  // against a project), since the paginated `employees` list may not include
-  // everyone.
+  // per employee), since the paginated `employees` list may not include
+  // everyone. Employee headcount grows slowly (staff, not transactions), so
+  // an all-at-once list stays cheap here unlike cash-out ledgers.
   const [allEmployees, setAllEmployees] = useState<ApiEmployee[]>([]);
   const [isFetchingAllEmployees, setIsFetchingAllEmployees] = useState(true);
 
-  // Every cash-out, fetched in full so the Expense tab's ledger (office
-  // categories only) and the global Main Balance calculation (office +
-  // labour-wage categories) both have everything on hand.
-  const [allCashOuts, setAllCashOuts] = useState<any[]>([]);
+  // Office Expense ledger — fetched page-by-page, filtered server-side to
+  // office-overhead categories, instead of pulling up to 1000 cash-outs and
+  // filtering client-side (which silently drops older rows past that cap).
+  const [officeCashOuts, setOfficeCashOuts] = useState<any[]>([]);
   const [isFetchingCashOuts, setIsFetchingCashOuts] = useState(true);
-  const officeCashOuts = allCashOuts.filter((co: any) => OFFICE_CATEGORY_KEYS.includes(co.expenseCategory));
+  const [expensePage, setExpensePage] = useState(1);
+  const [expenseLimit, setExpenseLimit] = useState(10);
+  const [expenseTotal, setExpenseTotal] = useState(0);
 
   // Pay Salary modal: payment history
   const [salaryHistory, setSalaryHistory] = useState<any[]>([]);
@@ -175,7 +178,7 @@ export default function EmployeesPage() {
     setIsFetchingEmployees(true);
     try {
       const res = await axios.get('/api/employees', {
-        params: { page: empPage, limit: empLimit, search: searchEmployee }
+        params: { page: empPage, limit: empLimit, search: debouncedSearchEmployee }
       });
       if (res.data.status === 'success') {
         setEmployees(res.data.data.employees || []);
@@ -205,9 +208,12 @@ export default function EmployeesPage() {
   const fetchOfficeCashOuts = async () => {
     setIsFetchingCashOuts(true);
     try {
-      const res = await axios.get('/api/transactions/cash-out', { params: { limit: 1000 } });
+      const res = await axios.get('/api/transactions/cash-out', {
+        params: { categories: OFFICE_CATEGORY_KEYS.join(','), page: expensePage, limit: expenseLimit },
+      });
       if (res.data.status === 'success') {
-        setAllCashOuts(res.data.data.cashOuts || []);
+        setOfficeCashOuts(res.data.data.cashOuts || []);
+        setExpenseTotal(res.data.data.total || 0);
       }
     } catch (err) {
       // silent
@@ -229,12 +235,12 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     fetchEmployees();
-  }, [empPage, empLimit]);
+  }, [empPage, empLimit, debouncedSearchEmployee]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      setDebouncedSearchEmployee(searchEmployee);
       setEmpPage(1);
-      fetchEmployees();
     }, 400);
     return () => clearTimeout(timer);
   }, [searchEmployee]);
@@ -242,8 +248,11 @@ export default function EmployeesPage() {
   useEffect(() => {
     fetchProjects();
     fetchAllEmployees();
-    fetchOfficeCashOuts();
   }, []);
+
+  useEffect(() => {
+    fetchOfficeCashOuts();
+  }, [expensePage, expenseLimit]);
 
   const handleOpenEmployeeCreate = () => {
     setEmployeeModalMode('create');
@@ -449,6 +458,7 @@ export default function EmployeesPage() {
         }),
         { successMessage: `Successfully logged office expense of ${formatCurrencyLocal(amount)}` }
       );
+      setExpensePage(1);
       fetchOfficeCashOuts();
       setExpenseFormData({
         date: new Date().toISOString().split('T')[0],
@@ -595,9 +605,7 @@ export default function EmployeesPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
-                      {[...officeCashOuts]
-                        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                        .map((co: any) => (
+                      {officeCashOuts.map((co: any) => (
                           <tr key={co.id} className="hover:bg-slate-900/30 transition-colors">
                             <td className="py-3 px-3 text-slate-450 font-mono text-[10px]">
                               {new Date(co.date).toLocaleDateString()}
@@ -617,6 +625,16 @@ export default function EmployeesPage() {
                     </tbody>
                   </table>
                 </div>
+              )}
+              {expenseTotal > 0 && (
+                <Pagination
+                  currentPage={expensePage}
+                  totalPages={Math.ceil(expenseTotal / expenseLimit)}
+                  totalItems={expenseTotal}
+                  limit={expenseLimit}
+                  onPageChange={setExpensePage}
+                  onLimitChange={(l) => { setExpenseLimit(l); setExpensePage(1); }}
+                />
               )}
           </div>
         )}
