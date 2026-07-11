@@ -121,6 +121,11 @@ export default function SettingsPage() {
 
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Avatar photo picked but not yet saved — only persisted when the user
+  // clicks Save, not the instant a file is chosen.
+  const [pendingAvatar, setPendingAvatar] = useState<string | null>(null);
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
+
   const isAdmin = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
 
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
@@ -257,6 +262,31 @@ export default function SettingsPage() {
     }
   };
 
+  const handleAvatarSelect = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setPendingAvatar(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const saveAvatar = async () => {
+    if (!currentUser || !pendingAvatar) return;
+    setIsSavingAvatar(true);
+    try {
+      await handlePromise(axios.patch(`/api/users/${currentUser.id}`, { profileImage: pendingAvatar }), {
+        successMessage: 'Profile image updated successfully.',
+        errorMessage: 'Failed to update profile image.',
+      });
+      setCurrentUser((prev: any) => ({ ...prev, profileImage: pendingAvatar }));
+      setPendingAvatar(null);
+    } catch {
+      // handled by toast
+    } finally {
+      setIsSavingAvatar(false);
+    }
+  };
+
   // ─── Password Form ─────────────────────────────────────────────────────────
 
   const passwordForm = useForm<PasswordFormData>({
@@ -312,8 +342,8 @@ export default function SettingsPage() {
             <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 flex flex-col items-center text-center">
               <div className="relative group mb-3">
                 <div className="h-20 w-20 bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border-2 border-cyan-500/30 rounded-full flex items-center justify-center text-cyan-400 text-2xl font-bold uppercase overflow-hidden">
-                  {currentUser?.profileImage ? (
-                    <img src={currentUser.profileImage} alt="Profile" className="h-full w-full object-cover" />
+                  {pendingAvatar || currentUser?.profileImage ? (
+                    <img src={pendingAvatar || currentUser.profileImage} alt="Profile" className="h-full w-full object-cover" />
                   ) : (
                     currentUser?.fullName?.slice(0, 2) || 'U'
                   )}
@@ -326,26 +356,36 @@ export default function SettingsPage() {
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (!file || !currentUser) return;
-
-                      const reader = new FileReader();
-                      reader.onload = async (event) => {
-                        const base64String = event.target?.result as string;
-                        try {
-                          await handlePromise(axios.patch(`/api/users/${currentUser.id}`, { profileImage: base64String }), {
-                            successMessage: 'Profile image updated successfully.',
-                            errorMessage: 'Failed to update profile image.',
-                          });
-                          setCurrentUser((prev: any) => ({ ...prev, profileImage: base64String }));
-                        } catch {
-                          // handled by toast
-                        }
-                      };
-                      reader.readAsDataURL(file);
+                      if (!file) return;
+                      handleAvatarSelect(file);
+                      e.target.value = '';
                     }}
                   />
                 </label>
               </div>
+
+              {pendingAvatar && (
+                <div className="flex items-center gap-2 mb-3 -mt-1">
+                  <button
+                    type="button"
+                    onClick={saveAvatar}
+                    disabled={isSavingAvatar}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 text-[11px] font-bold rounded-lg shadow hover:shadow-cyan-500/10 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    {isSavingAvatar ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                    Save Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingAvatar(null)}
+                    disabled={isSavingAvatar}
+                    className="px-3 py-1.5 text-[11px] font-bold text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
               <p className="font-bold text-slate-200 text-sm">{currentUser?.fullName}</p>
               <p className="text-slate-500 text-xs mt-0.5">{currentUser?.email}</p>
 
