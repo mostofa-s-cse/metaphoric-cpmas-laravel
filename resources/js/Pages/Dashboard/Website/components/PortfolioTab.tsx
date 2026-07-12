@@ -17,8 +17,14 @@ export function PortfolioTab({ toast }: Props) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const defaultState = { title: '', category: '', theChallenge: '', theSolution: '', theOutcome: '', coverImage: '', beforeImage: '', afterImage: '', images: [] as string[], isActive: true, order: 0 };
-  const [isUploadingGallery, setIsUploadingGallery] = useState(false);
   const [formData, setFormData] = useState<any>(defaultState);
+
+  // Files picked but not yet uploaded — only sent to the server when Save is
+  // clicked. formData holds local blob preview URLs in the meantime.
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
+  // Gallery: blob preview URL -> the raw File it stands in for, so Save can
+  // upload each one and swap the blob URL for the real one in formData.images.
+  const [pendingGalleryFiles, setPendingGalleryFiles] = useState<Record<string, File>>({});
 
   const fetchItems = async () => {
     setIsLoading(true);
@@ -41,6 +47,8 @@ export function PortfolioTab({ toast }: Props) {
   const handleOpenNew = () => {
     setEditingId(null);
     setFormData(defaultState);
+    setPendingFiles({});
+    setPendingGalleryFiles({});
     setIsModalOpen(true);
   };
 
@@ -54,6 +62,8 @@ export function PortfolioTab({ toast }: Props) {
     });
     cleanedItem.images = Array.isArray(item.images) ? item.images : [];
     setFormData(cleanedItem);
+    setPendingFiles({});
+    setPendingGalleryFiles({});
     setIsModalOpen(true);
   };
 
@@ -61,68 +71,90 @@ export function PortfolioTab({ toast }: Props) {
     setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, fieldName: string) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, fieldName: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const fd = new FormData();
-    fd.append('file', file);
-    try {
-      const res = await axios.post('/api/upload', fd);
-      if (res.data.status === 'success' && res.data.data?.url) {
-        setFormData((prev: any) => ({ ...prev, [fieldName]: res.data.data.url }));
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    setPendingFiles((prev) => ({ ...prev, [fieldName]: file }));
+    setFormData((prev: any) => ({ ...prev, [fieldName]: URL.createObjectURL(file) }));
   };
 
-  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGalleryUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    setIsUploadingGallery(true);
-    try {
-      const uploaded: string[] = [];
-      for (const file of files) {
-        const fd = new FormData();
-        fd.append('file', file);
-        const res = await axios.post('/api/upload', fd);
-        if (res.data.status === 'success' && res.data.data?.url) {
-          uploaded.push(res.data.data.url);
-        }
-      }
-      setFormData((prev: any) => ({ ...prev, images: [...(prev.images || []), ...uploaded] }));
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsUploadingGallery(false);
-      e.target.value = '';
-    }
+    const newPending: Record<string, File> = {};
+    const newUrls: string[] = [];
+    files.forEach((file) => {
+      const blobUrl = URL.createObjectURL(file);
+      newPending[blobUrl] = file;
+      newUrls.push(blobUrl);
+    });
+    setPendingGalleryFiles((prev) => ({ ...prev, ...newPending }));
+    setFormData((prev: any) => ({ ...prev, images: [...(prev.images || []), ...newUrls] }));
+    e.target.value = '';
   };
 
   const handleRemoveGalleryImage = (index: number) => {
-    setFormData((prev: any) => ({
-      ...prev,
-      images: (prev.images || []).filter((_: string, i: number) => i !== index),
-    }));
+    setFormData((prev: any) => {
+      const removedUrl = (prev.images || [])[index];
+      if (removedUrl && removedUrl in pendingGalleryFiles) {
+        setPendingGalleryFiles((pf) => {
+          const rest = { ...pf };
+          delete rest[removedUrl];
+          return rest;
+        });
+      }
+      return {
+        ...prev,
+        images: (prev.images || []).filter((_: string, i: number) => i !== index),
+      };
+    });
   };
 
   const handleSave = async () => {
     const isEditing = !!editingId;
     isEditing ? setIsUpdating(true) : setIsAdding(true);
     try {
+      const payload = { ...formData };
+
+      for (const [fieldName, file] of Object.entries(pendingFiles)) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await axios.post('/api/upload', fd);
+        if (res.data.status !== 'success' || !res.data.data?.url) {
+          throw new Error(`Upload failed for ${fieldName}`);
+        }
+        payload[fieldName] = res.data.data.url;
+      }
+
+      if (Object.keys(pendingGalleryFiles).length > 0) {
+        const uploadedUrlByBlob: Record<string, string> = {};
+        for (const [blobUrl, file] of Object.entries(pendingGalleryFiles)) {
+          const fd = new FormData();
+          fd.append('file', file);
+          const res = await axios.post('/api/upload', fd);
+          if (res.data.status !== 'success' || !res.data.data?.url) {
+            throw new Error('Gallery image upload failed');
+          }
+          uploadedUrlByBlob[blobUrl] = res.data.data.url;
+        }
+        payload.images = (payload.images || []).map((img: string) => uploadedUrlByBlob[img] || img);
+      }
+
       const promise = isEditing
-        ? axios.patch(`/api/website/portfolio/${editingId}`, formData)
-        : axios.post('/api/website/portfolio', formData);
+        ? axios.patch(`/api/website/portfolio/${editingId}`, payload)
+        : axios.post('/api/website/portfolio', payload);
       await toast.handlePromise(promise, {
         successMessage: isEditing ? 'Portfolio item updated successfully' : 'Portfolio item added successfully',
         errorMessage: 'Failed to save portfolio item',
       });
       setIsModalOpen(false);
+      setPendingFiles({});
+      setPendingGalleryFiles({});
       fetchItems();
     } catch (err) {
       console.error(err);
+      toast.error('Failed to save portfolio item');
     } finally {
       isEditing ? setIsUpdating(false) : setIsAdding(false);
     }
@@ -213,9 +245,9 @@ export function PortfolioTab({ toast }: Props) {
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">Gallery Images (multiple)</label>
             <label className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg cursor-pointer transition-colors border border-slate-700 hover:border-cyan-500 w-fit">
-              {isUploadingGallery ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {isUploadingGallery ? 'Uploading...' : 'Upload Images'}
-              <input type="file" accept="image/*" multiple onChange={handleGalleryUpload} className="hidden" disabled={isUploadingGallery} />
+              <Upload className="w-4 h-4" />
+              Upload Images
+              <input type="file" accept="image/*" multiple onChange={handleGalleryUpload} className="hidden" />
             </label>
             {(formData.images || []).length > 0 && (
               <div className="grid grid-cols-4 gap-2 mt-3">

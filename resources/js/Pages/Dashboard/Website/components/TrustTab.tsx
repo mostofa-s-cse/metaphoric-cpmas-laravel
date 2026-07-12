@@ -19,6 +19,10 @@ export function TrustTab({ toast }: Props) {
   const defaultState = { isActive: true, order: 0, name: '', type: '', imageUrl: '' };
   const [formData, setFormData] = useState<any>(defaultState);
 
+  // Image picked but not yet uploaded — only sent to the server when Save
+  // is clicked. formData.imageUrl holds a local blob preview in the meantime.
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
+
   const fetchItems = async () => {
     setIsLoading(true);
     try {
@@ -40,12 +44,14 @@ export function TrustTab({ toast }: Props) {
   const handleOpenNew = () => {
     setEditingId(null);
     setFormData(defaultState);
+    setPendingFiles({});
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (item: any) => {
     setEditingId(item.id);
     setFormData(item);
+    setPendingFiles({});
     setIsModalOpen(true);
   };
 
@@ -53,37 +59,42 @@ export function TrustTab({ toast }: Props) {
     setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, fieldName: string) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, fieldName: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const fd = new FormData();
-    fd.append('file', file);
-    try {
-      const res = await axios.post('/api/upload', fd);
-      if (res.data.status === 'success' && res.data.data?.url) {
-        setFormData((prev: any) => ({ ...prev, [fieldName]: res.data.data.url }));
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    setPendingFiles((prev) => ({ ...prev, [fieldName]: file }));
+    setFormData((prev: any) => ({ ...prev, [fieldName]: URL.createObjectURL(file) }));
   };
 
   const handleSave = async () => {
     const isEditing = !!editingId;
     isEditing ? setIsUpdating(true) : setIsAdding(true);
     try {
+      const payload = { ...formData };
+
+      for (const [fieldName, file] of Object.entries(pendingFiles)) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await axios.post('/api/upload', fd);
+        if (res.data.status !== 'success' || !res.data.data?.url) {
+          throw new Error(`Upload failed for ${fieldName}`);
+        }
+        payload[fieldName] = res.data.data.url;
+      }
+
       const promise = isEditing
-        ? axios.patch(`/api/website/trust/${editingId}`, formData)
-        : axios.post('/api/website/trust', formData);
+        ? axios.patch(`/api/website/trust/${editingId}`, payload)
+        : axios.post('/api/website/trust', payload);
       await toast.handlePromise(promise, {
         successMessage: isEditing ? 'Trust badge updated successfully' : 'Trust badge added successfully',
         errorMessage: 'Failed to save trust badge',
       });
       setIsModalOpen(false);
+      setPendingFiles({});
       fetchItems();
     } catch (err) {
       console.error(err);
+      toast.error('Failed to save trust badge');
     } finally {
       isEditing ? setIsUpdating(false) : setIsAdding(false);
     }

@@ -84,6 +84,11 @@ function GeneralSettingsTab({ toast }: { toast: ReturnType<typeof useToast> }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Files picked but not yet uploaded — only sent to the server (and only
+  // then written to disk) when Save Settings is clicked, not the instant a
+  // file is chosen. formData holds a local blob preview URL in the meantime.
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
+
   const [formData, setFormData] = useState({
     name: 'Metaphoric',
     nameAlt: 'Metaphoric Architect',
@@ -118,25 +123,11 @@ function GeneralSettingsTab({ toast }: { toast: ReturnType<typeof useToast> }) {
     })();
   }, []);
 
-  const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>, fieldName: string) => {
+  const handleAssetUpload = (e: React.ChangeEvent<HTMLInputElement>, fieldName: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const fd = new FormData();
-    fd.append('file', file);
-
-    try {
-      const res = await axios.post('/api/upload', fd);
-      if (res.data.status === 'success' && res.data.data?.url) {
-        setFormData((prev) => ({ ...prev, [fieldName]: res.data.data.url }));
-        toast.success('Asset uploaded successfully!');
-      } else {
-        toast.error('Upload failed.');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Upload failed.');
-    }
+    setPendingFiles((prev) => ({ ...prev, [fieldName]: file }));
+    setFormData((prev) => ({ ...prev, [fieldName]: URL.createObjectURL(file) }));
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -146,15 +137,30 @@ function GeneralSettingsTab({ toast }: { toast: ReturnType<typeof useToast> }) {
   const handleSave = async () => {
     setIsUpdating(true);
     try {
+      const payload = { ...formData };
+
+      for (const [fieldName, file] of Object.entries(pendingFiles)) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await axios.post('/api/upload', fd);
+        if (res.data.status !== 'success' || !res.data.data?.url) {
+          throw new Error(`Upload failed for ${fieldName}`);
+        }
+        payload[fieldName as keyof typeof payload] = res.data.data.url;
+      }
+
       await toast.handlePromise(
-        axios.post('/api/website/settings', { key: 'BRAND_INFO', value: formData }),
+        axios.post('/api/website/settings', { key: 'BRAND_INFO', value: payload }),
         {
           successMessage: 'Settings saved successfully!',
           errorMessage: 'Failed to save settings.',
         }
       );
+      setFormData(payload);
+      setPendingFiles({});
     } catch (err) {
       console.error(err);
+      toast.error('Failed to save settings.');
     } finally {
       setIsUpdating(false);
     }
@@ -317,6 +323,10 @@ function PageSectionsTab({ toast }: { toast: ReturnType<typeof useToast> }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Image picked but not yet uploaded — only sent to the server when Save
+  // is clicked. heroData.imageUrl holds a local blob preview in the meantime.
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+
   const [heroData, setHeroData] = useState<any>({
     id: null,
     sectionKey: 'HERO',
@@ -348,35 +358,19 @@ function PageSectionsTab({ toast }: { toast: ReturnType<typeof useToast> }) {
     setHeroData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const img = new window.Image();
     const objectUrl = URL.createObjectURL(file);
 
-    img.onload = async () => {
-      URL.revokeObjectURL(objectUrl);
-
+    img.onload = () => {
       if (img.width < 1920 || img.height < 1080) {
         toast.warning(`Warning: The recommended image size is 1920x1080 pixels for the best quality on large screens. Your image is ${img.width}x${img.height} pixels. It will still be uploaded, but may look blurry.`);
       }
-
-      const fd = new FormData();
-      fd.append('file', file);
-
-      try {
-        const res = await axios.post('/api/upload', fd);
-        if (res.data.status === 'success' && res.data.data?.url) {
-          setHeroData((prev: any) => ({ ...prev, imageUrl: res.data.data.url }));
-          toast.success('Image uploaded successfully!');
-        } else {
-          toast.error('Upload failed.');
-        }
-      } catch (err) {
-        console.error(err);
-        toast.error('Upload failed.');
-      }
+      setPendingImageFile(file);
+      setHeroData((prev: any) => ({ ...prev, imageUrl: objectUrl }));
     };
     img.src = objectUrl;
   };
@@ -384,12 +378,24 @@ function PageSectionsTab({ toast }: { toast: ReturnType<typeof useToast> }) {
   const handleSave = async () => {
     setIsUpdating(true);
     try {
+      const payload = { ...heroData };
+
+      if (pendingImageFile) {
+        const fd = new FormData();
+        fd.append('file', pendingImageFile);
+        const res = await axios.post('/api/upload', fd);
+        if (res.data.status !== 'success' || !res.data.data?.url) {
+          throw new Error('Image upload failed');
+        }
+        payload.imageUrl = res.data.data.url;
+      }
+
       // If the HERO section doesn't exist in the DB yet (first-ever save),
       // create it via the sectionKey-upsert endpoint instead of PATCHing an
       // unknown id. Once it exists, keep using PATCH by id like before.
-      const request = heroData.id
-        ? axios.patch(`/api/website/sections/${heroData.id}`, heroData)
-        : axios.post('/api/website/sections', heroData);
+      const request = payload.id
+        ? axios.patch(`/api/website/sections/${payload.id}`, payload)
+        : axios.post('/api/website/sections', payload);
 
       const res = await toast.handlePromise(request, {
         successMessage: 'Hero section saved successfully!',
@@ -397,11 +403,11 @@ function PageSectionsTab({ toast }: { toast: ReturnType<typeof useToast> }) {
       });
 
       const saved = res?.data?.data?.section;
-      if (saved?.id) {
-        setHeroData((prev: any) => ({ ...prev, ...saved }));
-      }
+      setHeroData((prev: any) => ({ ...prev, ...payload, ...(saved?.id ? saved : {}) }));
+      setPendingImageFile(null);
     } catch (err) {
       console.error(err);
+      toast.error('Failed to save hero section.');
     } finally {
       setIsUpdating(false);
     }
