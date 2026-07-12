@@ -27,6 +27,8 @@ class MaterialController extends Controller
         $page = (int) $request->get('page', 1);
         $limit = (int) $request->get('limit', 10);
         $skip = ($page - 1) * $limit;
+        $startDate = $request->get('startDate');
+        $endDate = $request->get('endDate');
 
         $query = Material::with(['supplier:id,name', 'project:id,name,code']);
 
@@ -37,6 +39,8 @@ class MaterialController extends Controller
         }
         if ($projectId) $query->where('projectId', $projectId);
         if ($supplierId) $query->where('supplierId', $supplierId);
+        if ($startDate) $query->where('purchaseDate', '>=', \Carbon\Carbon::parse($startDate)->startOfDay());
+        if ($endDate) $query->where('purchaseDate', '<=', \Carbon\Carbon::parse($endDate)->endOfDay());
 
         $total = $query->count();
         $materials = $query->orderBy('created_at', 'desc')->skip($skip)->take($limit)->get();

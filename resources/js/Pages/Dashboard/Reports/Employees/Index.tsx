@@ -3,6 +3,7 @@ import { Head, usePage } from '@inertiajs/react';
 import axios from 'axios';
 
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { DateRangeFilter } from '@/Components/ui/DateRangeFilter';
 import {
   Users2,
   Wallet,
@@ -23,6 +24,8 @@ export default function EmployeeReportPage() {
   const user = auth?.user;
 
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const [employees, setEmployees] = useState<any[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
@@ -36,7 +39,9 @@ export default function EmployeeReportPage() {
 
     const fetchEmployees = async () => {
       try {
-        const res = await axios.get('/api/employees', { params: { limit: FULL_LIST_LIMIT } });
+        const res = await axios.get('/api/employees', {
+          params: { limit: FULL_LIST_LIMIT, startDate, endDate },
+        });
         if (!cancelled && res.data.status === 'success') {
           setEmployees(res.data.data.employees || []);
         }
@@ -50,7 +55,7 @@ export default function EmployeeReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, startDate, endDate]);
 
   // Per-employee derived totals
   const employeeReports = useMemo(() => {
@@ -262,7 +267,14 @@ export default function EmployeeReportPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Date Range Filter */}
+            <DateRangeFilter
+              startDate={startDate}
+              endDate={endDate}
+              onApply={(s, e) => { setStartDate(s); setEndDate(e); }}
+            />
+
             {/* Download PDF */}
             <button
               onClick={handleDownloadPDF}

@@ -24,13 +24,19 @@ class EmployeeController extends Controller
         $page = (int) $request->get('page', 1);
         $limit = (int) $request->get('limit', 10);
         $skip = ($page - 1) * $limit;
+        $startDate = $request->get('startDate');
+        $endDate = $request->get('endDate');
 
         $query = Employee::with('salaries');
         if ($search) {
-            $query->where('fullName', 'like', "%{$search}%")
+            $query->where(function ($q) use ($search) {
+                $q->where('fullName', 'like', "%{$search}%")
                   ->orWhere('designation', 'like', "%{$search}%")
                   ->orWhere('employeeId', 'like', "%{$search}%");
+            });
         }
+        if ($startDate) $query->where('created_at', '>=', \Carbon\Carbon::parse($startDate)->startOfDay());
+        if ($endDate) $query->where('created_at', '<=', \Carbon\Carbon::parse($endDate)->endOfDay());
 
         $total = $query->count();
         $employees = $query->orderBy('created_at', 'desc')->skip($skip)->take($limit)->get();

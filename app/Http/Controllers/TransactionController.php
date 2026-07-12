@@ -34,6 +34,8 @@ class TransactionController extends Controller
         $skip = ($page - 1) * $limit;
         $projectId = $request->get('projectId');
         $search = $request->get('search', '');
+        $startDate = $request->get('startDate');
+        $endDate = $request->get('endDate');
 
         $query = CashIn::with(['project:id,name,code']);
         if ($projectId === 'GENERAL') {
@@ -42,6 +44,8 @@ class TransactionController extends Controller
             $query->where('projectId', $projectId);
         }
         if ($search) $query->where('clientName', 'like', "%{$search}%");
+        if ($startDate) $query->where('date', '>=', \Carbon\Carbon::parse($startDate)->startOfDay());
+        if ($endDate) $query->where('date', '<=', \Carbon\Carbon::parse($endDate)->endOfDay());
 
         $total = $query->count();
         $items = $query->orderBy('date', 'desc')->skip($skip)->take($limit)->get();
@@ -114,6 +118,8 @@ class TransactionController extends Controller
         $employeeId = $request->get('employeeId');
         $categories = $request->get('categories'); // CSV of expenseCategory values
         $search = $request->get('search', '');
+        $startDate = $request->get('startDate');
+        $endDate = $request->get('endDate');
 
         $query = CashOut::with(['project:id,name,code', 'supplier:id,name',
             'vendor:id,name', 'employee:id,fullName', 'labour:id,name']);
@@ -126,6 +132,8 @@ class TransactionController extends Controller
         if ($employeeId) $query->where('employeeId', $employeeId);
         if ($categories) $query->whereIn('expenseCategory', explode(',', $categories));
         if ($search) $query->where('paidTo', 'like', "%{$search}%");
+        if ($startDate) $query->where('date', '>=', \Carbon\Carbon::parse($startDate)->startOfDay());
+        if ($endDate) $query->where('date', '<=', \Carbon\Carbon::parse($endDate)->endOfDay());
 
         $total = $query->count();
         $items = $query->orderBy('date', 'desc')->skip($skip)->take($limit)->get();
@@ -284,6 +292,8 @@ class TransactionController extends Controller
     public function summary(Request $request)
     {
         $projectId = $request->get('projectId');
+        $startDate = $request->get('startDate');
+        $endDate = $request->get('endDate');
 
         $cashInQuery = CashIn::query();
         $cashOutQuery = CashOut::query();
@@ -294,6 +304,17 @@ class TransactionController extends Controller
         } elseif ($projectId) {
             $cashInQuery->where('projectId', $projectId);
             $cashOutQuery->where('projectId', $projectId);
+        }
+
+        if ($startDate) {
+            $sDate = \Carbon\Carbon::parse($startDate)->startOfDay();
+            $cashInQuery->where('date', '>=', $sDate);
+            $cashOutQuery->where('date', '>=', $sDate);
+        }
+        if ($endDate) {
+            $eDate = \Carbon\Carbon::parse($endDate)->endOfDay();
+            $cashInQuery->where('date', '<=', $eDate);
+            $cashOutQuery->where('date', '<=', $eDate);
         }
 
         $cashIns = $cashInQuery->get();

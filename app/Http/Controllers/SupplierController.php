@@ -24,6 +24,8 @@ class SupplierController extends Controller
         $page = (int) $request->get('page', 1);
         $limit = (int) $request->get('limit', 10);
         $skip = ($page - 1) * $limit;
+        $startDate = $request->get('startDate');
+        $endDate = $request->get('endDate');
 
         $query = Supplier::query();
         if ($search) {
@@ -37,6 +39,8 @@ class SupplierController extends Controller
                 $q->where('projectId', $projectId);
             });
         }
+        if ($startDate) $query->where('created_at', '>=', \Carbon\Carbon::parse($startDate)->startOfDay());
+        if ($endDate) $query->where('created_at', '<=', \Carbon\Carbon::parse($endDate)->endOfDay());
 
         $total = $query->count();
         $suppliers = $query->orderBy('created_at', 'desc')
