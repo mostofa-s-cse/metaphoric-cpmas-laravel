@@ -49,6 +49,10 @@ Route::get('/team/{id}', function (string $id) {
     return Inertia::render('Team/Show', ['id' => $id]);
 });
 
+Route::get('/contact', function () {
+    return Inertia::render('Contact');
+})->name('contact');
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 Route::prefix('api')->group(function () {
