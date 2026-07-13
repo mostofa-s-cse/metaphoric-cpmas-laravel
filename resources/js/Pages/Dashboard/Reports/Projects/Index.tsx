@@ -3,6 +3,7 @@ import { Head, usePage } from '@inertiajs/react';
 import axios from 'axios';
 
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { DateRangeFilter } from '@/Components/ui/DateRangeFilter';
 import {
   TrendingUp,
   FolderKanban,
@@ -23,6 +24,8 @@ export default function ProjectReportPage() {
   const user = auth?.user;
 
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const [projects, setProjects] = useState<any[]>([]);
   const [allCashIns, setAllCashIns] = useState<any[]>([]);
@@ -52,7 +55,9 @@ export default function ProjectReportPage() {
 
     const fetchCashIns = async () => {
       try {
-        const res = await axios.get('/api/transactions/cash-in', { params: { limit: FULL_LIST_LIMIT } });
+        const res = await axios.get('/api/transactions/cash-in', {
+          params: { limit: FULL_LIST_LIMIT, startDate, endDate },
+        });
         if (!cancelled && res.data.status === 'success') {
           setAllCashIns(res.data.data.cashIns || []);
         }
@@ -63,7 +68,9 @@ export default function ProjectReportPage() {
 
     const fetchCashOuts = async () => {
       try {
-        const res = await axios.get('/api/transactions/cash-out', { params: { limit: FULL_LIST_LIMIT } });
+        const res = await axios.get('/api/transactions/cash-out', {
+          params: { limit: FULL_LIST_LIMIT, startDate, endDate },
+        });
         if (!cancelled && res.data.status === 'success') {
           setAllCashOuts(res.data.data.cashOuts || []);
         }
@@ -79,7 +86,7 @@ export default function ProjectReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, startDate, endDate]);
 
   // Per-project budget / collections / spend reconciliation
   const projectReports = useMemo(() => {
@@ -296,7 +303,14 @@ export default function ProjectReportPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Date Range Filter */}
+            <DateRangeFilter
+              startDate={startDate}
+              endDate={endDate}
+              onApply={(s, e) => { setStartDate(s); setEndDate(e); }}
+            />
+
             {/* Download PDF */}
             <button
               onClick={handleDownloadPDF}

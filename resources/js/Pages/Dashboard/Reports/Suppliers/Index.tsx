@@ -3,6 +3,7 @@ import { Head, usePage } from '@inertiajs/react';
 import axios from 'axios';
 
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { DateRangeFilter } from '@/Components/ui/DateRangeFilter';
 import {
   Truck,
   Wallet,
@@ -24,6 +25,8 @@ export default function SupplierReportPage() {
 
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);
@@ -37,7 +40,9 @@ export default function SupplierReportPage() {
 
     const fetchSuppliers = async () => {
       try {
-        const res = await axios.get('/api/suppliers', { params: { limit: FULL_LIST_LIMIT } });
+        const res = await axios.get('/api/suppliers', {
+          params: { limit: FULL_LIST_LIMIT, startDate, endDate },
+        });
         if (!cancelled && res.data.status === 'success') {
           setSuppliers(res.data.data.suppliers || []);
         }
@@ -51,7 +56,7 @@ export default function SupplierReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, startDate, endDate]);
 
   // Core numbers
   const totalCurrentDue = suppliers.reduce((s: number, sup: any) => s + (sup.currentDue || 0), 0);
@@ -254,7 +259,14 @@ export default function SupplierReportPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Date Range Filter */}
+            <DateRangeFilter
+              startDate={startDate}
+              endDate={endDate}
+              onApply={(s, e) => { setStartDate(s); setEndDate(e); }}
+            />
+
             {/* Download PDF */}
             <button
               onClick={handleDownloadPDF}
