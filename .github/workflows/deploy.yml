@@ -2,9 +2,10 @@
 # Required config    Repo -> Settings -> Secrets and variables -> Actions
 # ---------------------------------------------------------------------
 # Variables tab (New repository variable):
-#   HOST      : Server IP or hostname          (e.g. 123.123.123.123)
-#   PORT      : SSH port                        (e.g. 22)
-#   USERNAME  : SSH / cPanel user               (e.g. metaphor)
+#   HOST        : Server IP or hostname        (e.g. 123.123.123.123)
+#   PORT        : SSH port                      (e.g. 22)
+#   USERNAME    : SSH / cPanel user             (e.g. metaphor)
+#   DEPLOY_PATH : App root on server            (e.g. /home/metaphor/public_html)
 #
 # Secrets tab (New repository secret):
 #   SSH_PRIVATE_KEY : Private SSH key (full contents of ~/.ssh/id_ed25519)
@@ -33,38 +34,43 @@ jobs:
       PORT: ${{ vars.PORT }}                     # SSH port                 (Variable)
       USERNAME: ${{ vars.USERNAME }}             # SSH / cPanel user        (Variable)
       SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}    # private SSH key contents (Secret)
-      DEPLOY_PATH: /home/metaphor/public_html    # app root on server
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}       # app root on server       (Variable)
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       ####################################################
-      # PHP
+      # NODE + PNPM
+      # Runner only builds JS assets (tsc && vite build).
+      # No PHP/Composer needed here — the server runs its
+      # own composer install in the Deploy step.
       ####################################################
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.4"
-          extensions: mbstring, intl, pdo_mysql, bcmath
-          coverage: none
-
-      - name: Install Composer Dependencies
-        run: composer install --no-dev --prefer-dist --optimize-autoloader
-
-      ####################################################
-      # NODE
-      ####################################################
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4   # version read from package.json "packageManager"
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "dir=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.dir }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
 
       - name: Install Node Packages
-        run: npm ci
+        # On unchanged pnpm-lock.yaml the store cache is restored and this
+        # only relinks node_modules (seconds instead of a full download).
+        run: pnpm install --frozen-lockfile
 
       ####################################################
       # SSH (must run BEFORE pulling .env)
@@ -95,7 +101,7 @@ jobs:
       ####################################################
 
       - name: Build Assets
-        run: npm run build
+        run: pnpm run build
 
       ####################################################
       # Upload ONLY public/build
