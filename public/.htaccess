@@ -3,6 +3,9 @@
         Options -MultiViews -Indexes
     </IfModule>
 
+    # Follow symlinks so public/storage (-> storage/app/public) resolves
+    Options +FollowSymLinks
+
     RewriteEngine On
 
     # Handle Authorization Header

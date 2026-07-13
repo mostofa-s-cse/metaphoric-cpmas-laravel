@@ -1,0 +1,27 @@
+# cPanel document root points at the app root (public_html), not public/.
+# Rewrite every request into the public/ folder so Laravel's
+# front controller (public/index.php) handles it.
+
+# Follow symlinks so public/storage (-> storage/app/public) resolves.
+Options +FollowSymLinks -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Don't rewrite requests that already target public/
+    RewriteCond %{REQUEST_URI} !^/public/
+
+    # Route everything into public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Block access to dotfiles (.env, .git, etc.) if a request
+# ever reaches the app root directly (mod_rewrite disabled/bypassed).
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Explicitly block sensitive files
+<FilesMatch "^(\.env.*|composer\.(json|lock)|package(-lock)?\.json|artisan|.*\.(log|sql|md)|Dockerfile.*|docker-compose.*)$">
+    Require all denied
+</FilesMatch>

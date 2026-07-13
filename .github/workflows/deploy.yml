@@ -1,0 +1,145 @@
+# =====================================================================
+# Required config    Repo -> Settings -> Secrets and variables -> Actions
+# ---------------------------------------------------------------------
+# Variables tab (New repository variable):
+#   HOST      : Server IP or hostname          (e.g. 123.123.123.123)
+#   PORT      : SSH port                        (e.g. 22)
+#   USERNAME  : SSH / cPanel user               (e.g. metaphor)
+#
+# Secrets tab (New repository secret):
+#   SSH_PRIVATE_KEY : Private SSH key (full contents of ~/.ssh/id_ed25519)
+#                     Public key must be in server ~/.ssh/authorized_keys
+# ---------------------------------------------------------------------
+# Server-side requirements (not GitHub config):
+#   - /home/metaphor/public_html holds a git clone of this repo
+#   - /home/metaphor/public_html/.env exists (pulled to runner for build)
+#   - SSH user has read access to that .env
+# =====================================================================
+
+name: Deploy Laravel
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # Map GitHub Variables + Secret -> environment variables once, reuse everywhere.
+    env:
+      HOST: ${{ vars.HOST }}                     # server IP / hostname     (Variable)
+      PORT: ${{ vars.PORT }}                     # SSH port                 (Variable)
+      USERNAME: ${{ vars.USERNAME }}             # SSH / cPanel user        (Variable)
+      SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}    # private SSH key contents (Secret)
+      DEPLOY_PATH: /home/metaphor/public_html    # app root on server
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      ####################################################
+      # PHP
+      ####################################################
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: mbstring, intl, pdo_mysql, bcmath
+          coverage: none
+
+      - name: Install Composer Dependencies
+        run: composer install --no-dev --prefer-dist --optimize-autoloader
+
+      ####################################################
+      # NODE
+      ####################################################
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Node Packages
+        run: npm ci
+
+      ####################################################
+      # SSH (must run BEFORE pulling .env)
+      ####################################################
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+
+      ####################################################
+      # Pull LIVE .env from server -> runner
+      # Vite bakes VITE_*, APP_URL, websocket/FURL keys
+      # at build time, so build must use the real .env.
+      ####################################################
+
+      - name: Fetch server .env
+        run: |
+          scp -P "$PORT" \
+            "$USERNAME@$HOST:$DEPLOY_PATH/.env" \
+            .env
+          echo "Pulled live .env from server"
+
+      ####################################################
+      # Build (now with correct env)
+      ####################################################
+
+      - name: Build Assets
+        run: npm run build
+
+      ####################################################
+      # Upload ONLY public/build
+      ####################################################
+
+      - name: Sync Build Folder
+        run: |
+          rsync -az --delete \
+            -e "ssh -p $PORT" \
+            public/build/ \
+            "$USERNAME@$HOST:$DEPLOY_PATH/public/build/"
+
+      ####################################################
+      # Deploy
+      ####################################################
+
+      - name: Deploy Application
+        run: |
+          ssh -p "$PORT" "$USERNAME@$HOST" "DEPLOY_PATH='$DEPLOY_PATH' bash -s" << 'EOF'
+
+          cd "$DEPLOY_PATH"
+
+          echo "Pulling latest code..."
+          git fetch origin
+          git reset --hard origin/main
+
+          echo "Installing Composer..."
+          composer install --no-dev --prefer-dist --optimize-autoloader
+
+          echo "Clearing cache..."
+          php artisan optimize:clear
+
+          echo "Linking storage..."
+          php artisan storage:link --force
+
+          echo "Running migrations..."
+          php artisan migrate --force
+
+          echo "Optimizing..."
+          php artisan optimize
+
+          # echo "Restarting queue..."
+          # php artisan queue:restart || true
+
+          echo "Deployment Completed"
+
+          EOF
