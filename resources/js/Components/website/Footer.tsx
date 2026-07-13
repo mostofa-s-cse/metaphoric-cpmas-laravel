@@ -147,7 +147,7 @@ export default function Footer() {
                     name="name"
                     required
                     type="text"
-                    className="w-full bg-transparent border-b border-[#D4AF37]/20 pb-4 text-[#FDFBF7] focus:outline-none focus:border-[#D4AF37] transition-colors placeholder:text-[#3A3530] font-light text-sm"
+                    className="w-full bg-transparent border-0 border-b border-[#D4AF37]/20 pb-4 text-[#FDFBF7] focus:outline-none focus:border-[#D4AF37] transition-colors placeholder:text-[#3A3530] font-light text-sm"
                     placeholder="Jane Doe"
                   />
                 </div>
@@ -159,7 +159,7 @@ export default function Footer() {
                     name="email"
                     required
                     type="email"
-                    className="w-full bg-transparent border-b border-[#D4AF37]/20 pb-4 text-[#FDFBF7] focus:outline-none focus:border-[#D4AF37] transition-colors placeholder:text-[#3A3530] font-light text-sm"
+                    className="w-full bg-transparent border-0 border-b border-[#D4AF37]/20 pb-4 text-[#FDFBF7] focus:outline-none focus:border-[#D4AF37] transition-colors placeholder:text-[#3A3530] font-light text-sm"
                     placeholder="jane@example.com"
                   />
                 </div>
@@ -171,7 +171,7 @@ export default function Footer() {
                 <select
                   name="scope"
                   required
-                  className="w-full bg-transparent border-b border-[#D4AF37]/20 pb-4 text-[#E8E3DB] focus:outline-none focus:border-[#D4AF37] transition-colors font-light text-sm appearance-none cursor-pointer"
+                  className="w-full bg-transparent border-0 border-b border-[#D4AF37]/20 pb-4 text-[#E8E3DB] focus:outline-none focus:border-[#D4AF37] transition-colors font-light text-sm appearance-none cursor-pointer"
                 >
                   {services.map((svc: any) => (
                     <option key={svc.id} value={svc.title} className="bg-[#1A1816] text-[#E8E3DB]">
@@ -193,7 +193,7 @@ export default function Footer() {
                 <textarea
                   name="details"
                   rows={3}
-                  className="w-full bg-transparent border-b border-[#D4AF37]/20 pb-4 text-[#FDFBF7] focus:outline-none focus:border-[#D4AF37] transition-colors placeholder:text-[#3A3530] font-light text-sm resize-none"
+                  className="w-full bg-transparent border-0 border-b border-[#D4AF37]/20 pb-4 text-[#FDFBF7] focus:outline-none focus:border-[#D4AF37] transition-colors placeholder:text-[#3A3530] font-light text-sm resize-none"
                   placeholder="Share your vision with us..."
                 ></textarea>
               </div>
