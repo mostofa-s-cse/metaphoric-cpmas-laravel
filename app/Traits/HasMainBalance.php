@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\Project;
 use App\Models\WebsiteSettings;
@@ -10,7 +11,7 @@ use Illuminate\Support\Facades\Cache;
 /**
  * Shared Main Balance logic used by every controller that creates a CashOut
  * (Transactions, Employee salary payments, Material purchases, ...) so the
- * 30%-of-project-budget rule and the admin-configured category list
+ * 30%-of-total-paid-amount rule and the admin-configured category list
  * (Settings > Main Balance) are enforced consistently everywhere.
  */
 trait HasMainBalance
@@ -57,14 +58,28 @@ trait HasMainBalance
     }
 
     /**
+     * Sum of every project-linked CashIn's amount (the "Paid Amount" shown per
+     * project on the Projects page, totalled across all projects). amount is
+     * an encrypted column so it can't be summed in SQL — same full-table-scan
+     * caveat as totalProjectBudget(). Invalidated by CashIn::booted() on
+     * save/delete.
+     */
+    private function totalPaidAmount(): float
+    {
+        return Cache::remember('main_balance:total_paid_amount', now()->addDay(), function () {
+            return (float) CashIn::whereNotNull('projectId')->get()->sum('amount');
+        });
+    }
+
+    /**
      * Balance available for an expense. Draws from the shared main balance
-     * (configured % of all projects' budgets, minus every general expense and
-     * every expense whose category is configured to draw from main balance)
-     * when no project is linked or the category forces main balance; otherwise
-     * draws from that project's own share (minus what it already spent,
-     * excluding amounts that were actually funded by main balance).
-     * $excludeCashOutId lets an update exclude the record being edited from
-     * its own "already spent" total.
+     * (configured % of all projects' total paid amount, minus every general
+     * expense and every expense whose category is configured to draw from
+     * main balance) when no project is linked or the category forces main
+     * balance; otherwise draws from that project's own share (minus what it
+     * already spent, excluding amounts that were actually funded by main
+     * balance). $excludeCashOutId lets an update exclude the record being
+     * edited from its own "already spent" total.
      */
     private function availableBalance(?string $projectId, ?string $category = null, ?string $excludeCashOutId = null): float
     {
@@ -72,7 +87,7 @@ trait HasMainBalance
         $drawsFromMain = !$projectId || $this->isMainBalanceCategory($category, $config);
 
         if ($drawsFromMain) {
-            $allocated = $this->totalProjectBudget() * $config['percentage'];
+            $allocated = $this->totalPaidAmount() * $config['percentage'];
             $spentQuery = CashOut::where(function ($q) use ($config) {
                 $q->whereNull('projectId');
                 if (!empty($config['categories'])) {

@@ -147,13 +147,13 @@ class DashboardController extends Controller
                 ];
             }
 
-            // Main balance: admin-configured % of all project budgets (default 30%,
-            // see Settings > Main Balance Configuration), minus expenses booked with
-            // no project plus any expense whose category is configured to always
-            // draw from main balance.
+            // Main balance: admin-configured % of all projects' total paid amount
+            // (default 30%, see Settings > Main Balance Configuration), minus
+            // expenses booked with no project plus any expense whose category is
+            // configured to always draw from main balance.
             $mainBalanceConfig = $this->mainBalanceConfig();
             $summary['mainBalancePercentage'] = round($mainBalanceConfig['percentage'] * 100, 2);
-            $summary['mainBalanceAllocated'] = (float) $projects->sum('estimatedBudget') * $mainBalanceConfig['percentage'];
+            $summary['mainBalanceAllocated'] = $this->totalPaidAmount() * $mainBalanceConfig['percentage'];
             $summary['mainBalance'] = $this->availableBalance(null);
 
         } catch (\Throwable $e) {
