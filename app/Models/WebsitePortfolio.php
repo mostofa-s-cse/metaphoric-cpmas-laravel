@@ -15,6 +15,7 @@ class WebsitePortfolio extends Model
         'id',
         'title',
         'category',
+        'location',
         'coverImage',
         'beforeImage',
         'afterImage',

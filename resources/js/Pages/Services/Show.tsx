@@ -10,10 +10,27 @@ interface Props {
   id: string;
 }
 
+const APPROACH_DEFAULT = {
+  title: 'Our Approach',
+  items: [
+    { title: 'Rigorous Detailing', description: 'Every line drawn serves a functional and aesthetic purpose, detailed to absolute perfection.' },
+    { title: 'Local Expertise', description: 'Deep understanding of Dhaka\'s urban requirements, building codes, and material suppliers.' },
+    { title: 'Sustainable Vision', description: 'Crafting spaces that optimize light, ventilation, and minimize environmental impact.' },
+    { title: 'End-to-End Delivery', description: 'Bridging the gap between creative design blueprint and practical field execution.' },
+  ],
+};
+
+const SHOW_CTA_DEFAULT = {
+  title: 'Start Your Project',
+  description: "Let's sit down and discuss how we can transform your space. Get a tailored consult for this service.",
+};
+
 export default function ServiceDetailPage({ id }: Props) {
   const [service, setService] = useState<any>(null);
   const [otherServices, setOtherServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [approach, setApproach] = useState(APPROACH_DEFAULT);
+  const [cta, setCta] = useState(SHOW_CTA_DEFAULT);
 
   useEffect(() => {
     fetch('/api/website/public')
@@ -26,6 +43,20 @@ export default function ServiceDetailPage({ id }: Props) {
             setService(found);
             setOtherServices(list.filter((s: any) => s.id !== id).slice(0, 4));
           }
+        }
+        const approachSection = json?.data?.sections?.find((s: any) => s.sectionKey === 'SERVICES_APPROACH');
+        if (approachSection) {
+          setApproach((prev) => ({
+            title: approachSection.title || prev.title,
+            items: approachSection.extraData?.items?.length ? approachSection.extraData.items : prev.items,
+          }));
+        }
+        const ctaSection = json?.data?.sections?.find((s: any) => s.sectionKey === 'SERVICES_SHOW_CTA');
+        if (ctaSection) {
+          setCta((prev) => ({
+            title: ctaSection.title || prev.title,
+            description: ctaSection.description || prev.description,
+          }));
         }
         setLoading(false);
       })
@@ -61,19 +92,19 @@ export default function ServiceDetailPage({ id }: Props) {
       <Navbar />
 
       {/* --- HERO BANNER --- */}
-      <section className="relative pt-48 pb-24 border-b border-[#D4AF37]/10 bg-[#1A1816] overflow-hidden">
+      <section className="relative pt-40 pb-20 border-b border-[#D4AF37]/10 bg-[#1A1816] overflow-hidden">
         <div className="absolute right-0 bottom-0 top-0 w-1/2 opacity-10 pointer-events-none">
-          <img 
-            src={service.imageUrl || 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80'} 
-            alt={service.title} 
-            className="w-full h-full object-cover filter blur-sm scale-110" 
+          <img
+            src={service.imageUrl || 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80'}
+            alt={service.title}
+            className="w-full h-full object-cover filter blur-sm scale-110"
           />
         </div>
-        
-        <div className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
+
+        <RevealSection className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
           <div className="flex flex-col gap-6">
-            <Link 
-              href="/services" 
+            <Link
+              href="/services"
               className="inline-flex items-center gap-3 text-[10px] font-medium tracking-[0.2em] uppercase text-[#D4AF37] hover:text-[#E8E3DB] transition-colors group mb-4 w-fit"
             >
               <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-1.5 transition-transform" />
@@ -83,11 +114,11 @@ export default function ServiceDetailPage({ id }: Props) {
               {service.title}
             </h1>
           </div>
-        </div>
+        </RevealSection>
       </section>
 
       {/* --- CONTENT SECTION --- */}
-      <section className="py-24">
+      <section className="py-20">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
             
@@ -116,19 +147,14 @@ export default function ServiceDetailPage({ id }: Props) {
 
               {/* Unique Features / Methodology */}
               <RevealSection delay={300} className="border-t border-[#D4AF37]/10 pt-12">
-                <h3 className="text-xl font-playfair text-[#FDFBF7] mb-8">Our Approach</h3>
+                <h3 className="text-xl font-playfair text-[#FDFBF7] mb-8">{approach.title}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {[
-                    { title: 'Rigorous Detailing', desc: 'Every line drawn serves a functional and aesthetic purpose, detailed to absolute perfection.' },
-                    { title: 'Local Expertise', desc: 'Deep understanding of Dhaka\'s urban requirements, building codes, and material suppliers.' },
-                    { title: 'Sustainable Vision', desc: 'Crafting spaces that optimize light, ventilation, and minimize environmental impact.' },
-                    { title: 'End-to-End Delivery', desc: 'Bridging the gap between creative design blueprint and practical field execution.' }
-                  ].map((item, i) => (
+                  {approach.items.map((item: any, i: number) => (
                     <div key={i} className="flex gap-4 p-6 bg-[#1A1816] border border-[#D4AF37]/5 hover:border-[#D4AF37]/20 transition-all duration-300">
                       <CheckCircle2 className="h-5 w-5 text-[#D4AF37] shrink-0 mt-0.5" />
                       <div>
                         <h4 className="text-sm font-medium text-[#FDFBF7] mb-2">{item.title}</h4>
-                        <p className="text-xs text-[#A69F95] leading-relaxed font-light">{item.desc}</p>
+                        <p className="text-xs text-[#A69F95] leading-relaxed font-light">{item.description}</p>
                       </div>
                     </div>
                   ))}
@@ -168,10 +194,10 @@ export default function ServiceDetailPage({ id }: Props) {
               <RevealSection delay={200} className="bg-[#1A1816] border border-[#D4AF37]/15 p-8 relative overflow-hidden group">
                 <div className="absolute inset-0 bg-[#D4AF37]/5 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-700 pointer-events-none"></div>
                 <h3 className="text-xl font-playfair text-[#FDFBF7] mb-4">
-                  Start Your Project
+                  {cta.title}
                 </h3>
                 <p className="text-xs text-[#A69F95] leading-relaxed mb-8 font-light">
-                  Let's sit down and discuss how we can transform your space. Get a tailored consult for this service.
+                  {cta.description}
                 </p>
                 <a 
                   href="#contact" 

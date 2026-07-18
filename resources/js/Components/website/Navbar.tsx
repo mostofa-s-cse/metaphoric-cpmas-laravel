@@ -50,6 +50,28 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Lock background scroll while the mobile menu is open — otherwise the page
+  // scrolls underneath the semi-transparent panel and its content bleeds
+  // through the nav links.
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.documentElement.style.overflow = '';
+    };
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileMenuOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const navItems = [
     { label: 'Home', href: '/' },
     { label: 'Services', href: '/services' },
@@ -140,21 +162,26 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       <div
-        className={`md:hidden absolute top-full left-0 w-full bg-[#141210]/98 backdrop-blur-3xl border-b border-[#D4AF37]/10 transition-all duration-500 overflow-hidden ${
-          mobileMenuOpen ? 'max-h-[400px] py-8' : 'max-h-0 py-0'
+        className={`md:hidden absolute top-full left-0 w-full bg-[#141210] border-b border-[#D4AF37]/10 transition-all duration-500 overflow-y-auto ${
+          mobileMenuOpen ? 'max-h-[85vh] py-8 opacity-100' : 'max-h-0 py-0 opacity-0 pointer-events-none'
         }`}
       >
         <div className="flex flex-col gap-8 px-6">
-          {navItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              onClick={() => setMobileMenuOpen(false)}
-              className="text-sm font-light tracking-[0.2em] text-[#E8E3DB] uppercase hover:text-[#D4AF37] transition-colors"
-            >
-              {item.label}
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.label}
+                href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`text-sm font-light tracking-[0.2em] uppercase transition-colors ${
+                  isActive ? 'text-[#D4AF37]' : 'text-[#E8E3DB] hover:text-[#D4AF37]'
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
           <a
             href={brand.facebook}
             target="_blank"

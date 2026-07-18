@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { Plus, Edit2, Trash2, Save, Loader2, Upload } from 'lucide-react';
 import { Modal } from '@/Components/ui/Modal';
 import { useToast } from '@/hooks/useToast';
+import { useFetchList } from '@/hooks/useFetchList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 interface Props {
   toast: ReturnType<typeof useToast>;
 }
 
+const ENDPOINT = '/api/website/trust';
+
 export function TrustTab({ toast }: Props) {
-  const [items, setItems] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { items, isLoading, refetch } = useFetchList<any>(ENDPOINT);
+  const { create, update, remove } = useCrudMutations(ENDPOINT, toast.handlePromise, refetch);
   const [isAdding, setIsAdding] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -22,24 +26,6 @@ export function TrustTab({ toast }: Props) {
   // Image picked but not yet uploaded — only sent to the server when Save
   // is clicked. formData.imageUrl holds a local blob preview in the meantime.
   const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
-
-  const fetchItems = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/website/trust');
-      if (res.data.status === 'success') {
-        setItems(res.data.data || []);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
 
   const handleOpenNew = () => {
     setEditingId(null);
@@ -82,16 +68,13 @@ export function TrustTab({ toast }: Props) {
         payload[fieldName] = res.data.data.url;
       }
 
-      const promise = isEditing
-        ? axios.patch(`/api/website/trust/${editingId}`, payload)
-        : axios.post('/api/website/trust', payload);
-      await toast.handlePromise(promise, {
-        successMessage: isEditing ? 'Trust badge updated successfully' : 'Trust badge added successfully',
-        errorMessage: 'Failed to save trust badge',
-      });
+      if (isEditing) {
+        await update(editingId as string, payload, 'Trust badge updated successfully', 'Failed to save trust badge');
+      } else {
+        await create(payload, 'Trust badge added successfully', 'Failed to save trust badge');
+      }
       setIsModalOpen(false);
       setPendingFiles({});
-      fetchItems();
     } catch (err) {
       console.error(err);
       toast.error('Failed to save trust badge');
@@ -103,11 +86,7 @@ export function TrustTab({ toast }: Props) {
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this?')) {
       try {
-        await toast.handlePromise(axios.delete(`/api/website/trust/${id}`), {
-          successMessage: 'Trust badge deleted successfully',
-          errorMessage: 'Failed to delete trust badge',
-        });
-        fetchItems();
+        await remove(id, 'Trust badge deleted successfully', 'Failed to delete trust badge');
       } catch (err) {
         console.error(err);
       }

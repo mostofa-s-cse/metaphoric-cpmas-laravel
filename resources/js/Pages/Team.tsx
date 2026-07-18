@@ -6,9 +6,16 @@ import Footer from '@/Components/website/Footer';
 import CustomCursor from '@/Components/website/CustomCursor';
 import RevealSection from '@/Components/website/RevealSection';
 
+const TEAM_HERO_DEFAULT = {
+  title: 'Our',
+  highlight: 'Team',
+  description: 'Meet the architects, designers, urban planners, and project managers driving creative excellence and solid execution.',
+};
+
 export default function TeamPage() {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hero, setHero] = useState(TEAM_HERO_DEFAULT);
 
   useEffect(() => {
     fetch('/api/website/public')
@@ -16,6 +23,14 @@ export default function TeamPage() {
       .then((json) => {
         if (json?.data?.team) {
           setTeamMembers(json.data.team);
+        }
+        const teamHero = json?.data?.sections?.find((s: any) => s.sectionKey === 'TEAM_HERO');
+        if (teamHero) {
+          setHero((prev) => ({
+            title: teamHero.title || prev.title,
+            highlight: teamHero.highlight || prev.highlight,
+            description: teamHero.description || prev.description,
+          }));
         }
         setLoading(false);
       })
@@ -32,21 +47,21 @@ export default function TeamPage() {
       <Navbar />
 
       {/* --- HERO BANNER --- */}
-      <section className="relative pt-48 pb-24 border-b border-[#D4AF37]/10 bg-[#1A1816]">
-        <div className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
+      <section className="relative pt-40 pb-20 border-b border-[#D4AF37]/10 bg-[#1A1816]">
+        <RevealSection className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
           <div className="max-w-3xl">
             <h1 className="text-5xl md:text-7xl font-playfair font-normal leading-tight text-[#FDFBF7] mb-6">
-              Our <i className="text-[#D4AF37]">Team</i>.
+              {hero.title} <i className="text-[#D4AF37]">{hero.highlight}</i>.
             </h1>
             <p className="text-[#A69F95] text-lg leading-relaxed font-light">
-              Meet the architects, designers, urban planners, and project managers driving creative excellence and solid execution.
+              {hero.description}
             </p>
           </div>
-        </div>
+        </RevealSection>
       </section>
 
       {/* --- TEAM LIST --- */}
-      <section className="py-24">
+      <section className="py-20">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
           {loading ? (
             <div className="text-center text-slate-500 py-12">Loading team members...</div>

@@ -1,22 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { Plus, Edit2, Trash2, Save, Loader2, Upload, X } from 'lucide-react';
 import { Modal } from '@/Components/ui/Modal';
 import { useToast } from '@/hooks/useToast';
+import { useFetchList } from '@/hooks/useFetchList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 interface Props {
   toast: ReturnType<typeof useToast>;
 }
 
 export function PortfolioTab({ toast }: Props) {
-  const [items, setItems] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { items, isLoading, refetch } = useFetchList<any>('/api/website/portfolio');
+  const { create, update, remove } = useCrudMutations('/api/website/portfolio', toast.handlePromise, refetch);
   const [isAdding, setIsAdding] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const defaultState = { title: '', category: '', theChallenge: '', theSolution: '', theOutcome: '', coverImage: '', beforeImage: '', afterImage: '', images: [] as string[], isActive: true, order: 0 };
+  const defaultState = { title: '', category: '', location: '', theChallenge: '', theSolution: '', theOutcome: '', coverImage: '', beforeImage: '', afterImage: '', images: [] as string[], isActive: true, order: 0 };
   const [formData, setFormData] = useState<any>(defaultState);
 
   // Files picked but not yet uploaded — only sent to the server when Save is
@@ -25,24 +27,6 @@ export function PortfolioTab({ toast }: Props) {
   // Gallery: blob preview URL -> the raw File it stands in for, so Save can
   // upload each one and swap the blob URL for the real one in formData.images.
   const [pendingGalleryFiles, setPendingGalleryFiles] = useState<Record<string, File>>({});
-
-  const fetchItems = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/website/portfolio');
-      if (res.data.status === 'success') {
-        setItems(res.data.data || []);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
 
   const handleOpenNew = () => {
     setEditingId(null);
@@ -141,17 +125,14 @@ export function PortfolioTab({ toast }: Props) {
         payload.images = (payload.images || []).map((img: string) => uploadedUrlByBlob[img] || img);
       }
 
-      const promise = isEditing
-        ? axios.patch(`/api/website/portfolio/${editingId}`, payload)
-        : axios.post('/api/website/portfolio', payload);
-      await toast.handlePromise(promise, {
-        successMessage: isEditing ? 'Portfolio item updated successfully' : 'Portfolio item added successfully',
-        errorMessage: 'Failed to save portfolio item',
-      });
+      if (isEditing) {
+        await update(editingId as string, payload, 'Portfolio item updated successfully', 'Failed to save portfolio item');
+      } else {
+        await create(payload, 'Portfolio item added successfully', 'Failed to save portfolio item');
+      }
       setIsModalOpen(false);
       setPendingFiles({});
       setPendingGalleryFiles({});
-      fetchItems();
     } catch (err) {
       console.error(err);
       toast.error('Failed to save portfolio item');
@@ -163,11 +144,7 @@ export function PortfolioTab({ toast }: Props) {
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this?')) {
       try {
-        await toast.handlePromise(axios.delete(`/api/website/portfolio/${id}`), {
-          successMessage: 'Portfolio item deleted successfully',
-          errorMessage: 'Failed to delete portfolio item',
-        });
-        fetchItems();
+        await remove(id, 'Portfolio item deleted successfully', 'Failed to delete portfolio item');
       } catch (err) {
         console.error(err);
       }
@@ -217,6 +194,10 @@ export function PortfolioTab({ toast }: Props) {
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">Category</label>
             <input type="text" name="category" value={formData.category} onChange={handleChange} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Location</label>
+            <input type="text" name="location" value={formData.location} onChange={handleChange} placeholder="e.g. Gulshan, Dhaka" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500" />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">The Challenge</label>

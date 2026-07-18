@@ -134,12 +134,14 @@ Route::middleware(['auth'])->prefix('api')->group(function () {
     Route::delete('/projects/{id}', [ProjectController::class, 'destroy']);
 
     // Suppliers
+    Route::get('/suppliers/list', [SupplierController::class, 'list']);
     Route::get('/suppliers', [SupplierController::class, 'index']);
     Route::post('/suppliers', [SupplierController::class, 'store']);
     Route::get('/suppliers/{id}', [SupplierController::class, 'show']);
     Route::patch('/suppliers/{id}', [SupplierController::class, 'update']);
 
     // Vendors
+    Route::get('/vendors/list', [VendorController::class, 'list']);
     Route::get('/vendors', [VendorController::class, 'index']);
     Route::post('/vendors', [VendorController::class, 'store']);
     Route::get('/vendors/{id}', [VendorController::class, 'show']);

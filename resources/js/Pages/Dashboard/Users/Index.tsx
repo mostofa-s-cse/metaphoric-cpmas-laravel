@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Head, usePage } from '@inertiajs/react';
-import axios from 'axios';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
@@ -11,6 +10,8 @@ import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { useResourceList } from '@/hooks/useResourceList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
   Shield, Plus, Search, Edit2, Trash2, X, Loader2, UserCheck, Mail, Key, Crown, Users2, UserCog, Lock
@@ -91,10 +92,14 @@ export default function UsersPage() {
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedUser, setSelectedUser] = useState<ApiUser | null>(null);
 
-  // Data states
-  const [users, setUsers] = useState<ApiUser[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
+
+  const {
+    items: users, isFetching: isLoading, refetch: fetchUsers,
+  } = useResourceList<ApiUser>('/api/users', { listKey: 'users' });
+
+  const { create: createUser, update: updateUser, remove: removeUser } =
+    useCrudMutations('/api/users', handlePromise, fetchUsers);
 
   const createForm = useForm<CreateUserFormData>({
     resolver: zodResolver(createUserSchema),
@@ -109,24 +114,6 @@ export default function UsersPage() {
   });
 
   const activeForm = modalMode === 'create' ? createForm : editForm;
-
-  const fetchUsers = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/users');
-      if (res.data.status === 'success') {
-        setUsers(res.data.data.users || []);
-      }
-    } catch (err) {
-      // ignore
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
 
   const handleOpenCreate = () => {
     setModalMode('create');
@@ -144,10 +131,7 @@ export default function UsersPage() {
   const handleDelete = async (id: string, name: string) => {
     if (!window.confirm(`Are you sure you want to permanently delete "${name}"? This action cannot be undone.`)) return;
     try {
-      await handlePromise(axios.delete(`/api/users/${id}`), {
-        successMessage: `User "${name}" has been deleted.`,
-      });
-      fetchUsers();
+      await removeUser(id, `User "${name}" has been deleted.`);
     } catch (err) {
       // ignore
     }
@@ -156,10 +140,7 @@ export default function UsersPage() {
   const onCreateSubmit = async (values: CreateUserFormData) => {
     setIsBusy(true);
     try {
-      await handlePromise(axios.post('/api/users', values), {
-        successMessage: 'User account created successfully.',
-      });
-      fetchUsers();
+      await createUser(values, 'User account created successfully.');
       setIsModalOpen(false);
     } catch (err) {
       // ignore
@@ -180,10 +161,7 @@ export default function UsersPage() {
     if (values.password) body.newPassword = values.password;
 
     try {
-      await handlePromise(axios.patch(`/api/users/${selectedUser.id}`, body), {
-        successMessage: 'User updated successfully.',
-      });
-      fetchUsers();
+      await updateUser(selectedUser.id, body, 'User updated successfully.');
       setIsModalOpen(false);
     } catch (err) {
       // ignore

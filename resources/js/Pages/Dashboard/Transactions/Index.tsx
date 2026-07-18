@@ -15,6 +15,8 @@ import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { useResourceList } from '@/hooks/useResourceList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
   ArrowUpDown, Plus, Search, ArrowUpRight, ArrowDownRight, DollarSign, Calendar, X, Loader2, Trash2
@@ -47,6 +49,8 @@ const cashOutSchema = z.object({
   paymentMethod: paymentMethodEnum,
   referenceNumber: z.string().optional().or(z.literal('')),
   notes: z.string().max(500).optional().or(z.literal('')),
+  vendorId: z.string().optional().or(z.literal('')),
+  supplierId: z.string().optional().or(z.literal('')),
 });
 
 type CashInFormValues = z.infer<typeof cashInSchema>;
@@ -89,8 +93,8 @@ interface TransactionSummary {
   cashIn: { total: number; byMode: Record<string, number> };
   cashOut: { total: number; byMode: Record<string, number> };
   net: number;
-  mainBalance?: { allocated: number; available: number; percentage: number };
-  projectBalance?: { allocated: number; available: number; percentage: number };
+  mainBalance?: { allocated: number; available: number };
+  projectBalance?: { allocated: number; available: number };
 }
 
 export default function TransactionsPage() {
@@ -99,28 +103,37 @@ export default function TransactionsPage() {
   const { toasts, removeToast, success, error, handlePromise } = useToast();
 
   const [activeTab, setActiveTab] = useState<'cashin' | 'cashout'>('cashin');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [projectFilter, setProjectFilter] = useState('ALL');
   const [summary, setSummary] = useState<TransactionSummary | null>(null);
-
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
 
   // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<{ id: string; type: 'in' | 'out' } | null>(null);
 
   // Data states
-  const [cashIns, setCashIns] = useState<ApiCashIn[]>([]);
-  const [cashOuts, setCashOuts] = useState<ApiCashOut[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
 
-  // Fetching/processing states
-  const [isFetching, setIsFetching] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
+  // Fetch + pagination state for the active tab's cash ledger. The endpoint and
+  // listKey switch with the tab, since Cash In/Out are separate list endpoints.
+  const cashEndpoint = activeTab === 'cashin' ? '/api/transactions/cash-in' : '/api/transactions/cash-out';
+  const cashListKey = activeTab === 'cashin' ? 'cashIns' : 'cashOuts';
+
+  const {
+    items: cashItems, totalItems, isFetching, fetchError, refetch: fetchCashTransactions,
+    page, setPage, limit, setLimit, searchTerm, setSearchTerm,
+  } = useResourceList<ApiCashIn | ApiCashOut>(cashEndpoint, {
+    listKey: cashListKey,
+    filters: { projectId: projectFilter !== 'ALL' ? projectFilter : undefined },
+  });
+
+  // Only one of these is ever populated at a time (mirrors the previous per-tab
+  // state); every JSX usage below already gates on `activeTab`.
+  const cashIns = activeTab === 'cashin' ? (cashItems as ApiCashIn[]) : [];
+  const cashOuts = activeTab === 'cashout' ? (cashItems as ApiCashOut[]) : [];
+
+  // Processing states
   const [isCreatingCashIn, setIsCreatingCashIn] = useState(false);
   const [isCreatingCashOut, setIsCreatingCashOut] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -140,7 +153,7 @@ export default function TransactionsPage() {
     resolver: zodResolver(cashInSchema),
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
-      projectId: 'GENERAL',
+      projectId: '',
       clientName: '',
       amount: '',
       paymentMethod: 'CASH',
@@ -158,51 +171,28 @@ export default function TransactionsPage() {
     handleSubmit: handleSubmitCashOut,
     reset: resetCashOut,
     control: controlCashOut,
+    watch: watchCashOut,
+    setValue: setCashOutValue,
     formState: { errors: cashOutErrors },
   } = useForm<CashOutFormValues>({
     resolver: zodResolver(cashOutSchema),
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
-      projectId: 'GENERAL',
+      projectId: '',
       expenseCategory: 'MATERIALS',
       paidTo: '',
       amount: '',
       paymentMethod: 'CASH',
       referenceNumber: '',
       notes: '',
+      vendorId: '',
+      supplierId: '',
     },
     mode: 'all',
   });
 
-  const fetchCashTransactions = async () => {
-    setIsFetching(true);
-    setFetchError(false);
-    try {
-      const endpoint = activeTab === 'cashin' ? '/api/transactions/cash-in' : '/api/transactions/cash-out';
-      const res = await axios.get(endpoint, {
-        params: {
-          page,
-          limit,
-          search: debouncedSearchTerm,
-          projectId: projectFilter !== 'ALL' ? projectFilter : undefined,
-        }
-      });
-      if (res.data.status === 'success') {
-        if (activeTab === 'cashin') {
-          setCashIns(res.data.data.cashIns || []);
-        } else {
-          setCashOuts(res.data.data.cashOuts || []);
-        }
-        setTotalItems(res.data.data.total || 0);
-      } else {
-        setFetchError(true);
-      }
-    } catch (err) {
-      setFetchError(true);
-    } finally {
-      setIsFetching(false);
-    }
-  };
+  const expenseCategory = watchCashOut('expenseCategory');
+  const cashOutProjectId = watchCashOut('projectId');
 
   const fetchProjects = async () => {
     try {
@@ -214,6 +204,44 @@ export default function TransactionsPage() {
       // ignore
     }
   };
+
+  const fetchVendors = async (projectId?: string) => {
+    try {
+      const res = await axios.get('/api/vendors/list', {
+        params: projectId && projectId !== 'GENERAL' ? { projectId } : undefined,
+      });
+      if (res.data.status === 'success') {
+        setVendors(res.data.data.vendors || []);
+      }
+    } catch (err) {
+      // ignore
+    }
+  };
+
+  const fetchSuppliers = async (projectId?: string) => {
+    try {
+      const res = await axios.get('/api/suppliers/list', {
+        params: projectId && projectId !== 'GENERAL' ? { projectId } : undefined,
+      });
+      if (res.data.status === 'success') {
+        setSuppliers(res.data.data.suppliers || []);
+      }
+    } catch (err) {
+      // ignore
+    }
+  };
+
+  // Vendor/supplier picks are project-scoped assignments, so the dropdown
+  // must be re-fetched (and cleared) whenever the linked project changes —
+  // otherwise a partner not assigned to the selected project could be picked
+  // and its per-project due/paid balance would never sync.
+  useEffect(() => {
+    fetchVendors(cashOutProjectId);
+    fetchSuppliers(cashOutProjectId);
+    setCashOutValue('vendorId', '');
+    setCashOutValue('supplierId', '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cashOutProjectId]);
 
   const fetchSummary = async () => {
     try {
@@ -231,10 +259,6 @@ export default function TransactionsPage() {
   };
 
   useEffect(() => {
-    fetchCashTransactions();
-  }, [page, limit, activeTab, projectFilter, debouncedSearchTerm]);
-
-  useEffect(() => {
     fetchSummary();
   }, [projectFilter]);
 
@@ -242,18 +266,21 @@ export default function TransactionsPage() {
     fetchProjects();
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
+  // Every mutation needs to refresh both the ledger list and the summary tiles.
+  const refetchCashData = () => {
+    fetchCashTransactions();
+    fetchSummary();
+  };
+
+  const { create: createCashIn, remove: removeCashIn } =
+    useCrudMutations('/api/transactions/cash-in', handlePromise, refetchCashData);
+  const { create: createCashOut, remove: removeCashOut } =
+    useCrudMutations('/api/transactions/cash-out', handlePromise, refetchCashData);
 
   const handleOpenCashIn = () => {
     resetCashIn({
       date: new Date().toISOString().split('T')[0],
-      projectId: 'GENERAL',
+      projectId: '',
       clientName: '',
       amount: '',
       paymentMethod: 'CASH',
@@ -268,13 +295,15 @@ export default function TransactionsPage() {
   const handleOpenCashOut = () => {
     resetCashOut({
       date: new Date().toISOString().split('T')[0],
-      projectId: 'GENERAL',
+      projectId: '',
       expenseCategory: 'MATERIALS',
       paidTo: '',
       amount: '',
       paymentMethod: 'CASH',
       referenceNumber: '',
       notes: '',
+      vendorId: '',
+      supplierId: '',
     });
     setIsCashOutModalOpen(true);
   };
@@ -287,10 +316,7 @@ export default function TransactionsPage() {
         amount: parseFloat(values.amount),
         projectId: values.projectId === 'GENERAL' || values.projectId === '' ? null : values.projectId,
       };
-      await handlePromise(axios.post('/api/transactions/cash-in', payload), {
-        successMessage: 'Cash In transaction logged successfully',
-      });
-      fetchCashTransactions();
+      await createCashIn(payload, 'Cash In transaction logged successfully');
       setIsCashInModalOpen(false);
     } catch (err) {
       // ignore
@@ -306,11 +332,10 @@ export default function TransactionsPage() {
         ...values,
         amount: parseFloat(values.amount),
         projectId: values.projectId === 'GENERAL' || values.projectId === '' ? null : values.projectId,
+        vendorId: values.expenseCategory === 'VENDOR_PAYMENT' && values.vendorId ? values.vendorId : null,
+        supplierId: values.expenseCategory === 'SUPPLIER_PAYMENT' && values.supplierId ? values.supplierId : null,
       };
-      await handlePromise(axios.post('/api/transactions/cash-out', payload), {
-        successMessage: 'Cash Out transaction logged successfully',
-      });
-      fetchCashTransactions();
+      await createCashOut(payload, 'Cash Out transaction logged successfully');
       setIsCashOutModalOpen(false);
     } catch (err) {
       // ignore
@@ -328,13 +353,11 @@ export default function TransactionsPage() {
     if (!transactionToDelete) return;
     setIsDeleting(true);
     try {
-      const endpoint = transactionToDelete.type === 'in'
-        ? `/api/transactions/cash-in/${transactionToDelete.id}`
-        : `/api/transactions/cash-out/${transactionToDelete.id}`;
-      await handlePromise(axios.delete(endpoint), {
-        successMessage: 'Transaction deleted successfully',
-      });
-      fetchCashTransactions();
+      if (transactionToDelete.type === 'in') {
+        await removeCashIn(transactionToDelete.id, 'Transaction deleted successfully');
+      } else {
+        await removeCashOut(transactionToDelete.id, 'Transaction deleted successfully');
+      }
       setDeleteConfirmOpen(false);
       setTransactionToDelete(null);
     } catch (err) {
@@ -433,7 +456,7 @@ export default function TransactionsPage() {
                     {formatCurrencyLocal(summary.mainBalance.available)}
                   </span>
                   <span className="block text-[10px] text-slate-600 mt-0.5">
-                    {summary.mainBalance.percentage}% of all project budgets ({formatCurrencyLocal(summary.mainBalance.allocated)})
+                    of {formatCurrencyLocal(summary.mainBalance.allocated)} total paid-in
                   </span>
                 </div>
               )}
@@ -444,7 +467,7 @@ export default function TransactionsPage() {
                     {formatCurrencyLocal(summary.projectBalance.available)}
                   </span>
                   <span className="block text-[10px] text-slate-600 mt-0.5">
-                    {summary.projectBalance.percentage}% of project budget ({formatCurrencyLocal(summary.projectBalance.allocated)})
+                    of {formatCurrencyLocal(summary.projectBalance.allocated)} paid-in for this project
                   </span>
                 </div>
               )}
@@ -558,7 +581,7 @@ export default function TransactionsPage() {
                         </td>
                         <td className="p-4">
                           <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-cyan-400 border border-cyan-500/10 font-bold uppercase font-mono tracking-wide">
-                            {t.source.replace(/_/g, ' ')}
+                            {t.source?.replace(/_/g, ' ')}
                           </span>
                         </td>
                         <td className="p-4 text-slate-400">
@@ -612,7 +635,7 @@ export default function TransactionsPage() {
                         </td>
                         <td className="p-4">
                           <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-rose-400 border border-rose-550/10 font-bold uppercase font-mono tracking-wide">
-                            {t.expenseCategory.replace(/_/g, ' ')}
+                            {t.expenseCategory?.replace(/_/g, ' ')}
                           </span>
                         </td>
                         <td className="p-4 text-slate-400">
@@ -747,6 +770,7 @@ export default function TransactionsPage() {
                   {...registerCashIn('projectId')}
                   error={cashInErrors.projectId?.message}
                 >
+                  <option value="" disabled className="bg-slate-900 text-slate-200">Select Project...</option>
                   <option value="GENERAL" className="bg-slate-900 text-slate-200">General Corporate (No project)</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id} className="bg-slate-900 text-slate-200">
@@ -873,6 +897,7 @@ export default function TransactionsPage() {
                   <option value="MATERIALS" className="bg-slate-900 text-slate-200">Raw Materials Purchase</option>
                   <option value="LABOR" className="bg-slate-900 text-slate-200">Site Labor Daily Wages</option>
                   <option value="VENDOR_PAYMENT" className="bg-slate-900 text-slate-200">Vendor Payment Milestone</option>
+                  <option value="SUPPLIER_PAYMENT" className="bg-slate-900 text-slate-200">Supplier Payment Milestone</option>
                   <option value="EMPLOYEE_SALARY" className="bg-slate-900 text-slate-200">Employee Salary</option>
                   <option value="OFFICE_RENT" className="bg-slate-900 text-slate-200">Office Rent</option>
                   <option value="UTILITIES" className="bg-slate-900 text-slate-200">Electricity &amp; Internet Utilities</option>
@@ -889,6 +914,7 @@ export default function TransactionsPage() {
                   {...registerCashOut('projectId')}
                   error={cashOutErrors.projectId?.message}
                 >
+                  <option value="" disabled className="bg-slate-900 text-slate-200">Select Project...</option>
                   <option value="GENERAL" className="bg-slate-900 text-slate-200">General Overhead (No project)</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id} className="bg-slate-900 text-slate-200">
@@ -898,6 +924,40 @@ export default function TransactionsPage() {
                 </Select>
               </div>
             </div>
+
+            {expenseCategory === 'VENDOR_PAYMENT' && (
+              <div>
+                <label className="block text-slate-400 text-xs font-semibold mb-2">Vendor</label>
+                <Select
+                  {...registerCashOut('vendorId')}
+                  error={cashOutErrors.vendorId?.message}
+                >
+                  <option value="" className="bg-slate-900 text-slate-200">Select a vendor...</option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.id} className="bg-slate-900 text-slate-200">
+                      {v.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+
+            {expenseCategory === 'SUPPLIER_PAYMENT' && (
+              <div>
+                <label className="block text-slate-400 text-xs font-semibold mb-2">Supplier</label>
+                <Select
+                  {...registerCashOut('supplierId')}
+                  error={cashOutErrors.supplierId?.message}
+                >
+                  <option value="" className="bg-slate-900 text-slate-200">Select a supplier...</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id} className="bg-slate-900 text-slate-200">
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
 
             <div>
               <label className="block text-slate-400 text-xs font-semibold mb-2">Reference # (Check/Txn ID)</label>

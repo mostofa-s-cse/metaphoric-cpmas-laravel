@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Head } from '@inertiajs/react';
 import axios from 'axios';
-import { Settings, Image, Grid, FolderKanban, Users, Shield, MessageSquare, HelpCircle, Save, Loader2, Upload } from 'lucide-react';
+import { Settings, Image, FileText, Grid, FolderKanban, Users, Shield, MessageSquare, HelpCircle, Save, Loader2, Upload } from 'lucide-react';
 
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
 
+import { PageContentTab } from './components/PageContentTab';
 import { ServicesTab } from './components/ServicesTab';
 import { PortfolioTab } from './components/PortfolioTab';
 import { TeamTab } from './components/TeamTab';
@@ -21,6 +22,7 @@ export default function WebsiteManagementPage() {
   const tabs = [
     { id: 'settings', label: 'General Settings', icon: Settings },
     { id: 'sections', label: 'Hero Section', icon: Image },
+    { id: 'pageContent', label: 'Page Content', icon: FileText },
     { id: 'services', label: 'Services', icon: Grid },
     { id: 'portfolio', label: 'Portfolio (Case Studies)', icon: FolderKanban },
     { id: 'team', label: 'Team', icon: Users },
@@ -65,6 +67,7 @@ export default function WebsiteManagementPage() {
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 min-h-[500px]">
           {activeTab === 'settings' && <GeneralSettingsTab toast={toast} />}
           {activeTab === 'sections' && <PageSectionsTab toast={toast} />}
+          {activeTab === 'pageContent' && <PageContentTab toast={toast} />}
           {activeTab === 'services' && <ServicesTab toast={toast} />}
           {activeTab === 'portfolio' && <PortfolioTab toast={toast} />}
           {activeTab === 'team' && <TeamTab toast={toast} />}

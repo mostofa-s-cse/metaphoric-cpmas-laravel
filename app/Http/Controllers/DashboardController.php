@@ -42,7 +42,6 @@ class DashboardController extends Controller
             'cashBalance'       => 0,
             'mainBalance'       => 0,
             'mainBalanceAllocated' => 0,
-            'mainBalancePercentage' => 30,
         ];
 
         $expenseBreakdown  = [];
@@ -63,29 +62,31 @@ class DashboardController extends Controller
             $summary['totalEmployees'] = Employee::count();
             $summary['totalLabour']    = Labour::count();
 
-            // The heavy part: cash_ins/cash_outs/suppliers/vendors/salaries are
-            // encrypted columns, so every total here requires loading full
-            // tables into PHP and summing in userland (can't SQL-aggregate an
-            // encrypted string). That cost is unavoidable on a cache miss, but
-            // cached afterward — busted by BustsDashboardCache on any write to
+            // Every amount column also has a plaintext decimal shadow column
+            // (amountNumeric/currentDueNumeric/...) kept in sync by the
+            // EncryptedFloat cast, so these totals are real SQL
+            // SUM()/GROUP BY queries — no full-table PHP scan anymore. Still
+            // cached briefly since this is several queries per dashboard
+            // load; busted by BustsDashboardCache on any write to
             // CashIn/CashOut/Supplier/Vendor/Salary, or by Project on budget
             // changes (see Project::booted()).
             $financials = Cache::remember('dashboard:financials', now()->addMinutes(10), function () use ($projects) {
-                $cashIns  = CashIn::all();
-                $cashOuts = CashOut::all();
-
-                $categoriesMap = [];
-                foreach ($cashOuts as $co) {
-                    $cat = $co->expenseCategory ?? 'MISCELLANEOUS';
-                    $categoriesMap[$cat] = ($categoriesMap[$cat] ?? 0) + (float) $co->amount;
-                }
-                $expenseBreakdown = collect($categoriesMap)
-                    ->map(fn ($value, $category) => compact('category', 'value'))
+                // Scoped to the last 6 months (same window as monthlyTrends below)
+                // so recent spending patterns aren't diluted by years-old costs
+                // as the business grows.
+                $expenseBreakdownSince = now()->subMonths(5)->startOfMonth();
+                $expenseBreakdown = CashOut::query()
+                    ->where('date', '>=', $expenseBreakdownSince)
+                    ->selectRaw("COALESCE(expenseCategory, 'MISCELLANEOUS') as category")
+                    ->selectRaw('SUM(amountNumeric) as value')
+                    ->groupBy('expenseCategory')
+                    ->get()
+                    ->map(fn ($row) => ['category' => $row->category, 'value' => (float) $row->value])
                     ->values()
                     ->toArray();
 
-                $projectComparison = $projects->take(5)->map(function ($p) use ($cashOuts) {
-                    $spent = $cashOuts->where('projectId', $p->id)->sum('amount');
+                $projectComparison = $projects->take(5)->map(function ($p) {
+                    $spent = CashOut::where('projectId', $p->id)->sum('amountNumeric');
                     return [
                         'name'   => $p->name,
                         'budget' => (float) $p->estimatedBudget,
@@ -99,12 +100,8 @@ class DashboardController extends Controller
                 for ($i = 5; $i >= 0; $i--) {
                     $monthStart = now()->subMonths($i)->startOfMonth();
                     $monthEnd = $monthStart->copy()->endOfMonth();
-                    $revenue = (float) $cashIns
-                        ->filter(fn ($c) => $c->date >= $monthStart && $c->date <= $monthEnd)
-                        ->sum('amount');
-                    $expenses = (float) $cashOuts
-                        ->filter(fn ($c) => $c->date >= $monthStart && $c->date <= $monthEnd)
-                        ->sum('amount');
+                    $revenue = (float) CashIn::whereBetween('date', [$monthStart, $monthEnd])->sum('amountNumeric');
+                    $expenses = (float) CashOut::whereBetween('date', [$monthStart, $monthEnd])->sum('amountNumeric');
                     $monthlyTrends[] = [
                         'month'    => $monthStart->format('M'),
                         'revenue'  => $revenue,
@@ -114,11 +111,11 @@ class DashboardController extends Controller
                 }
 
                 return [
-                    'totalCashIn'       => (float) $cashIns->sum('amount'),
-                    'totalCashOut'      => (float) $cashOuts->sum('amount'),
-                    'supplierDue'       => (float) Supplier::all()->sum('currentDue'),
-                    'vendorDue'         => (float) Vendor::all()->sum('dueAmount'),
-                    'salaryDue'         => (float) Salary::all()->sum('dueAmount'),
+                    'totalCashIn'       => (float) CashIn::sum('amountNumeric'),
+                    'totalCashOut'      => (float) CashOut::sum('amountNumeric'),
+                    'supplierDue'       => (float) Supplier::sum('currentDueNumeric'),
+                    'vendorDue'         => (float) Vendor::sum('dueAmountNumeric'),
+                    'salaryDue'         => (float) Salary::sum('dueAmountNumeric'),
                     'expenseBreakdown'  => $expenseBreakdown,
                     'projectComparison' => $projectComparison,
                     'monthlyTrends'     => $monthlyTrends,
@@ -147,13 +144,9 @@ class DashboardController extends Controller
                 ];
             }
 
-            // Main balance: admin-configured % of all projects' total paid amount
-            // (default 30%, see Settings > Main Balance Configuration), minus
-            // expenses booked with no project plus any expense whose category is
-            // configured to always draw from main balance.
-            $mainBalanceConfig = $this->mainBalanceConfig();
-            $summary['mainBalancePercentage'] = round($mainBalanceConfig['percentage'] * 100, 2);
-            $summary['mainBalanceAllocated'] = $this->totalPaidAmount() * $mainBalanceConfig['percentage'];
+            // Main balance: combined paid-in amount across all projects (the
+            // global pool), minus every global-category CashOut.
+            $summary['mainBalanceAllocated'] = $this->totalPaidAmount();
             $summary['mainBalance'] = $this->availableBalance(null);
 
         } catch (\Throwable $e) {

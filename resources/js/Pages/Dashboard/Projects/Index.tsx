@@ -16,6 +16,8 @@ import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { useResourceList } from '@/hooks/useResourceList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
   FolderKanban, Plus, Search, MapPin, Calendar, DollarSign,
@@ -90,20 +92,19 @@ export default function ProjectsPage() {
     );
   }
 
-  // Projects list state
-  const [projects, setProjects] = useState<ApiProject[]>([]);
-  const [isFetching, setIsFetching] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
-
-  // Filter & Search states
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  // Filter states
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
+  const {
+    items: projects, totalItems, isFetching, fetchError, refetch: fetchProjects,
+    page, setPage, limit, setLimit, searchTerm, setSearchTerm,
+  } = useResourceList<ApiProject>('/api/projects', {
+    listKey: 'projects',
+    filters: { status: statusFilter !== 'ALL' ? statusFilter : undefined },
+  });
+
+  const { create: createProject, update: updateProject, remove: removeProject } =
+    useCrudMutations('/api/projects', handlePromise, fetchProjects);
 
   // Modal & Edit states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -147,43 +148,6 @@ export default function ProjectsPage() {
     },
     mode: 'all',
   });
-
-  const fetchProjects = async () => {
-    setIsFetching(true);
-    setFetchError(false);
-    try {
-      const res = await axios.get('/api/projects', {
-        params: {
-          page,
-          limit,
-          search: debouncedSearchTerm,
-          status: statusFilter !== 'ALL' ? statusFilter : undefined
-        }
-      });
-      if (res.data.status === 'success') {
-        setProjects(res.data.data.projects || []);
-        setTotalItems(res.data.data.total || 0);
-      } else {
-        setFetchError(true);
-      }
-    } catch (err) {
-      setFetchError(true);
-    } finally {
-      setIsFetching(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProjects();
-  }, [page, limit, statusFilter, debouncedSearchTerm]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   // Track selected project updates when projects list refreshes
   useEffect(() => {
@@ -244,10 +208,7 @@ export default function ProjectsPage() {
     if (!projectToDelete) return;
     setIsDeleting(true);
     try {
-      await handlePromise(axios.delete(`/api/projects/${projectToDelete}`), {
-        successMessage: 'Project deleted successfully',
-      });
-      fetchProjects();
+      await removeProject(projectToDelete, 'Project deleted successfully');
       if (selectedProject?.id === projectToDelete) {
         setIsDetailsOpen(false);
       }
@@ -268,15 +229,10 @@ export default function ProjectsPage() {
         estimatedBudget: parseFloat(values.estimatedBudget),
       };
       if (modalMode === 'create') {
-        await handlePromise(axios.post('/api/projects', payload), {
-          successMessage: 'Project created successfully',
-        });
+        await createProject(payload, 'Project created successfully');
       } else if (selectedProjectId) {
-        await handlePromise(axios.patch(`/api/projects/${selectedProjectId}`, payload), {
-          successMessage: 'Project updated successfully',
-        });
+        await updateProject(selectedProjectId, payload, 'Project updated successfully');
       }
-      fetchProjects();
       setIsModalOpen(false);
     } catch (err) {
       // Handled by toast
@@ -691,15 +647,6 @@ export default function ProjectsPage() {
                       </span>
                       <span className="font-bold text-slate-200">
                         {formatCurrencyLocal(profitability.salaryCost)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="flex items-center gap-2">
-                        <Info className="h-3.5 w-3.5 text-slate-500" />
-                        Other &amp; Office Overheads:
-                      </span>
-                      <span className="font-bold text-slate-200">
-                        {formatCurrencyLocal(profitability.otherCost)}
                       </span>
                     </div>
                   </div>

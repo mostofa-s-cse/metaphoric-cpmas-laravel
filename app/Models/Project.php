@@ -12,18 +12,12 @@ class Project extends Model
 {
     use HasUuids, Auditable;
 
-    // Main Balance math (HasMainBalance::totalProjectBudget) caches the sum of
-    // every project's estimatedBudget — bust it whenever a project's budget
-    // could have changed, since estimatedBudget is an encrypted column and
-    // can't be summed in SQL (must load every row into PHP otherwise).
     protected static function booted()
     {
         static::saved(function () {
-            Cache::forget('main_balance:total_project_budget');
             Cache::forget('dashboard:financials');
         });
         static::deleted(function () {
-            Cache::forget('main_balance:total_project_budget');
             Cache::forget('dashboard:financials');
         });
     }

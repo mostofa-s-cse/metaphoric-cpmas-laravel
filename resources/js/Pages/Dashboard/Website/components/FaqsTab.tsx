@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState } from 'react';
 import { Plus, Edit2, Trash2, Save, Loader2 } from 'lucide-react';
 import { Modal } from '@/Components/ui/Modal';
 import { useToast } from '@/hooks/useToast';
+import { useFetchList } from '@/hooks/useFetchList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 interface Props {
   toast: ReturnType<typeof useToast>;
 }
 
+const ENDPOINT = '/api/website/faqs';
+
 export function FaqsTab({ toast }: Props) {
-  const [items, setItems] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { items, isLoading, refetch } = useFetchList<any>(ENDPOINT);
+  const { create, update, remove } = useCrudMutations(ENDPOINT, toast.handlePromise, refetch);
   const [isAdding, setIsAdding] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -18,24 +21,6 @@ export function FaqsTab({ toast }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const defaultState = { isActive: true, order: 0, question: '', answer: '' };
   const [formData, setFormData] = useState<any>(defaultState);
-
-  const fetchItems = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/website/faqs');
-      if (res.data.status === 'success') {
-        setItems(res.data.data || []);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
 
   const handleOpenNew = () => {
     setEditingId(null);
@@ -57,15 +42,12 @@ export function FaqsTab({ toast }: Props) {
     const isEditing = !!editingId;
     isEditing ? setIsUpdating(true) : setIsAdding(true);
     try {
-      const promise = isEditing
-        ? axios.patch(`/api/website/faqs/${editingId}`, formData)
-        : axios.post('/api/website/faqs', formData);
-      await toast.handlePromise(promise, {
-        successMessage: isEditing ? 'FAQ updated successfully' : 'FAQ added successfully',
-        errorMessage: 'Failed to save FAQ',
-      });
+      if (isEditing) {
+        await update(editingId as string, formData, 'FAQ updated successfully', 'Failed to save FAQ');
+      } else {
+        await create(formData, 'FAQ added successfully', 'Failed to save FAQ');
+      }
       setIsModalOpen(false);
-      fetchItems();
     } catch (err) {
       console.error(err);
     } finally {
@@ -76,11 +58,7 @@ export function FaqsTab({ toast }: Props) {
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this?')) {
       try {
-        await toast.handlePromise(axios.delete(`/api/website/faqs/${id}`), {
-          successMessage: 'FAQ deleted successfully',
-          errorMessage: 'Failed to delete FAQ',
-        });
-        fetchItems();
+        await remove(id, 'FAQ deleted successfully', 'Failed to delete FAQ');
       } catch (err) {
         console.error(err);
       }

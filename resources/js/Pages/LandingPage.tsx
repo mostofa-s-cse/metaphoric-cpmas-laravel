@@ -32,7 +32,7 @@ const RevealSection = ({ children, className = '', delay = 0 }: { children: Reac
   return (
     <div 
       ref={ref} 
-      className={`transition-all duration-1000 ease-out transform ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-16'} ${className}`}
+      className={`transition-all duration-1000 ease-out transform ${isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-16 scale-[0.97]'} ${className}`}
       style={{ transitionDelay: `${delay}ms` }}
     >
       {children}
@@ -403,7 +403,7 @@ export default function LandingPage() {
       </section>
 
       {/* --- THE VISION SECTION --- */}
-      <section id="studio" className="py-32 md:py-48 relative">
+      <section id="studio" className="py-24 md:py-36 relative">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
             <RevealSection className="relative group cursor-expand">
@@ -448,7 +448,7 @@ export default function LandingPage() {
       </section>
 
       {/* --- EXPERTISE (Bento Grid) --- */}
-      <section id="design" className="py-32 bg-[#1A1816] border-y border-[#D4AF37]/10">
+      <section id="design" className="py-24 bg-[#1A1816] border-y border-[#D4AF37]/10">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
           <RevealSection className="flex flex-col items-center text-center mb-24">
             <h2 className="text-[10px] font-medium tracking-[0.4em] text-[#D4AF37] uppercase mb-8 flex items-center gap-6 justify-center">
@@ -527,7 +527,7 @@ export default function LandingPage() {
       </section>
 
       {/* --- SELECTED WORKS --- */}
-      <section id="portfolio" className="py-32 md:py-48">
+      <section id="portfolio" className="py-24 md:py-36">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
           <RevealSection className="mb-20">
             <h2 className="text-[10px] font-medium tracking-[0.4em] text-[#D4AF37] uppercase mb-8 flex items-center gap-6">
@@ -582,7 +582,7 @@ export default function LandingPage() {
       </section>
 
       {/* --- TEAM & LEADERSHIP --- */}
-      <section id="team" className="py-32 border-t border-[#D4AF37]/10">
+      <section id="team" className="py-24 border-t border-[#D4AF37]/10">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
           <RevealSection className="mb-20">
             <h2 className="text-[10px] font-medium tracking-[0.4em] text-[#D4AF37] uppercase mb-8 flex items-center gap-6">
@@ -617,7 +617,7 @@ export default function LandingPage() {
       </section>
 
       {/* --- FREQUENTLY ASKED QUESTIONS --- */}
-      <section className="py-32 border-t border-[#D4AF37]/10 bg-[#1A1816]">
+      <section className="py-24 border-t border-[#D4AF37]/10 bg-[#1A1816]">
         <div className="max-w-[1000px] mx-auto px-6">
           <RevealSection className="text-center mb-20">
             <h2 className="text-[10px] font-medium tracking-[0.4em] text-[#D4AF37] uppercase mb-8 flex items-center gap-6 justify-center">
@@ -645,7 +645,7 @@ export default function LandingPage() {
       </section>
 
       {/* --- CLIENT REVIEWS --- */}
-      <section className="py-32 bg-[#1A1816] relative border-t border-[#D4AF37]/10">
+      <section className="py-24 bg-[#1A1816] relative border-t border-[#D4AF37]/10">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
           <RevealSection className="flex flex-col items-center text-center mb-24">
             <h2 className="text-[10px] font-medium tracking-[0.4em] text-[#D4AF37] uppercase mb-8 flex items-center gap-6 justify-center">

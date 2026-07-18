@@ -10,10 +10,15 @@ interface Props {
   id: string;
 }
 
+const QUOTE_DEFAULT = {
+  quote: 'Architecture is a metaphor for human connection. We do not just build concrete structures; we model spaces that foster community and inspire dreams.',
+};
+
 export default function TeamDetailPage({ id }: Props) {
   const [member, setMember] = useState<any>(null);
   const [otherTeam, setOtherTeam] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [quote, setQuote] = useState(QUOTE_DEFAULT);
 
   useEffect(() => {
     fetch('/api/website/public')
@@ -26,6 +31,10 @@ export default function TeamDetailPage({ id }: Props) {
             setMember(found);
             setOtherTeam(list.filter((m: any) => m.id !== id).slice(0, 3));
           }
+        }
+        const quoteSection = json?.data?.sections?.find((s: any) => s.sectionKey === 'TEAM_SHOW_QUOTE');
+        if (quoteSection?.description) {
+          setQuote({ quote: quoteSection.description });
         }
         setLoading(false);
       })
@@ -61,10 +70,10 @@ export default function TeamDetailPage({ id }: Props) {
       <Navbar />
 
       {/* --- HERO BANNER --- */}
-      <section className="relative pt-48 pb-20 border-b border-[#D4AF37]/10 bg-[#1A1816]">
-        <div className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
-          <Link 
-            href="/team" 
+      <section className="relative pt-40 pb-16 border-b border-[#D4AF37]/10 bg-[#1A1816]">
+        <RevealSection className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
+          <Link
+            href="/team"
             className="inline-flex items-center gap-3 text-[10px] font-medium tracking-[0.2em] uppercase text-[#D4AF37] hover:text-[#E8E3DB] transition-colors group mb-8 w-fit"
           >
             <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-1.5 transition-transform" />
@@ -78,11 +87,11 @@ export default function TeamDetailPage({ id }: Props) {
               {member.name}
             </h1>
           </div>
-        </div>
+        </RevealSection>
       </section>
 
       {/* --- DETAILS SECTION --- */}
-      <section className="py-24">
+      <section className="py-20">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
             
@@ -120,7 +129,7 @@ export default function TeamDetailPage({ id }: Props) {
 
               {/* Design quote or philosophy */}
               <RevealSection delay={300} className="border-t border-b border-[#D4AF37]/10 py-10 font-playfair italic text-lg md:text-xl text-[#FDFBF7] leading-relaxed">
-                "Architecture is a metaphor for human connection. We do not just build concrete structures; we model spaces that foster community and inspire dreams."
+                "{quote.quote}"
               </RevealSection>
 
               {/* Browse other team members */}

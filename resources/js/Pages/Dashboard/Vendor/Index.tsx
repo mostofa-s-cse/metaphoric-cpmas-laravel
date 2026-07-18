@@ -15,6 +15,8 @@ import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { useResourceList } from '@/hooks/useResourceList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
   Briefcase, Plus, Search, Phone, MapPin, Hammer, Trash2, Edit2, Loader2, Clock, X
@@ -32,9 +34,6 @@ const vendorSchema = z.object({
     contractAmount: z.string().refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 0, {
       message: 'Contract amount must be a non-negative number',
     }),
-    paidAmount: z.string().refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 0, {
-      message: 'Paid amount must be a non-negative number',
-    }).optional().or(z.literal('')),
   })).optional(),
 });
 
@@ -61,20 +60,19 @@ export default function VendorsPage() {
   const user = auth?.user;
   const { toasts, removeToast, success, error, handlePromise } = useToast();
 
-  const [vendors, setVendors] = useState<ApiVendor[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
-  const [isFetching, setIsFetching] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
-
-  // Search filter state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [projectFilter, setProjectFilter] = useState('ALL');
 
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
+  const {
+    items: vendors, setItems: setVendors, totalItems, isFetching, fetchError, refetch: fetchVendors,
+    page, setPage, limit, setLimit, searchTerm, setSearchTerm,
+  } = useResourceList<ApiVendor>('/api/vendors', {
+    listKey: 'vendors',
+    filters: { projectId: projectFilter !== 'ALL' ? projectFilter : undefined },
+  });
+
+  const { create: createVendor, update: updateVendor, remove: removeVendor } =
+    useCrudMutations('/api/vendors', handlePromise, fetchVendors);
 
   // Form modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -117,31 +115,6 @@ export default function VendorsPage() {
     name: 'assignments',
   });
 
-  const fetchVendors = async () => {
-    setIsFetching(true);
-    setFetchError(false);
-    try {
-      const res = await axios.get('/api/vendors', {
-        params: {
-          page,
-          limit,
-          search: debouncedSearchTerm,
-          projectId: projectFilter !== 'ALL' ? projectFilter : undefined,
-        }
-      });
-      if (res.data.status === 'success') {
-        setVendors(res.data.data.vendors || []);
-        setTotalItems(res.data.data.total || 0);
-      } else {
-        setFetchError(true);
-      }
-    } catch (err) {
-      setFetchError(true);
-    } finally {
-      setIsFetching(false);
-    }
-  };
-
   const fetchProjects = async () => {
     try {
       const res = await axios.get('/api/projects');
@@ -154,20 +127,8 @@ export default function VendorsPage() {
   };
 
   useEffect(() => {
-    fetchVendors();
-  }, [page, limit, projectFilter, debouncedSearchTerm]);
-
-  useEffect(() => {
     fetchProjects();
   }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   // Track updates to selected vendor when list refreshes
   useEffect(() => {
@@ -189,7 +150,7 @@ export default function VendorsPage() {
       address: '',
       workType: '',
       notes: '',
-      assignments: [{ projectId: '', contractAmount: '', paidAmount: '0' }],
+      assignments: [{ projectId: '', contractAmount: '' }],
     });
     setIsModalOpen(true);
   };
@@ -202,7 +163,6 @@ export default function VendorsPage() {
     const formAssignments = (vnd.projectAssignments || []).map((pa) => ({
       projectId: pa.projectId,
       contractAmount: pa.contractAmount.toString(),
-      paidAmount: pa.paidAmount.toString(),
     }));
 
     reset({
@@ -227,10 +187,7 @@ export default function VendorsPage() {
     if (!vendorToDelete) return;
     setIsDeleting(true);
     try {
-      await handlePromise(axios.delete(`/api/vendors/${vendorToDelete}`), {
-        successMessage: 'Vendor deleted successfully',
-      });
-      fetchVendors();
+      await removeVendor(vendorToDelete, 'Vendor deleted successfully');
       if (selectedVendor?.id === vendorToDelete) {
         setIsHistoryOpen(false);
       }
@@ -251,19 +208,13 @@ export default function VendorsPage() {
         assignments: (values.assignments || []).map((a) => ({
           projectId: a.projectId,
           contractAmount: parseFloat(a.contractAmount || '0'),
-          paidAmount: parseFloat(a.paidAmount || '0'),
         })),
       };
       if (modalMode === 'create') {
-        await handlePromise(axios.post('/api/vendors', payload), {
-          successMessage: 'Vendor registered successfully',
-        });
+        await createVendor(payload, 'Vendor registered successfully');
       } else if (selectedVendorId) {
-        await handlePromise(axios.patch(`/api/vendors/${selectedVendorId}`, payload), {
-          successMessage: 'Vendor updated successfully',
-        });
+        await updateVendor(selectedVendorId, payload, 'Vendor updated successfully');
       }
-      fetchVendors();
       setIsModalOpen(false);
     } catch (err) {
       // ignore
@@ -661,7 +612,7 @@ export default function VendorsPage() {
                     </h4>
                     <button
                       type="button"
-                      onClick={() => append({ projectId: '', contractAmount: '', paidAmount: '0' })}
+                      onClick={() => append({ projectId: '', contractAmount: '' })}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 border border-slate-850 hover:bg-slate-800 hover:text-slate-100 rounded-lg text-[10px] font-bold text-slate-400 transition-all cursor-pointer"
                     >
                       <Plus className="h-3 w-3 text-cyan-400" />
@@ -675,7 +626,7 @@ export default function VendorsPage() {
                     <div className="space-y-3">
                       {fields.map((field, index) => (
                         <div key={field.id} className="grid grid-cols-12 gap-3 items-end bg-slate-950/40 p-3 border border-slate-850 rounded-xl">
-                          <div className="col-span-5">
+                          <div className="col-span-8">
                             <label className="block text-slate-500 text-[10px] font-semibold mb-1.5">Project</label>
                             <Select
                               {...register(`assignments.${index}.projectId` as const)}
@@ -696,14 +647,6 @@ export default function VendorsPage() {
                               placeholder="0.00"
                               {...register(`assignments.${index}.contractAmount` as const)}
                               error={errors.assignments?.[index]?.contractAmount?.message}
-                            />
-                          </div>
-
-                          <div className="col-span-3">
-                            <label className="block text-slate-500 text-[10px] font-semibold mb-1.5">Paid ($)</label>
-                            <Input
-                              placeholder="0.00"
-                              {...register(`assignments.${index}.paidAmount` as const)}
                             />
                           </div>
 

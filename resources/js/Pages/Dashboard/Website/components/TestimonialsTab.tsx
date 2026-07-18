@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState } from 'react';
 import { Plus, Edit2, Trash2, Save, Loader2 } from 'lucide-react';
 import { Modal } from '@/Components/ui/Modal';
 import { useToast } from '@/hooks/useToast';
+import { useFetchList } from '@/hooks/useFetchList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 interface Props {
   toast: ReturnType<typeof useToast>;
 }
 
+const ENDPOINT = '/api/website/testimonials';
+
 export function TestimonialsTab({ toast }: Props) {
-  const [items, setItems] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { items, isLoading, refetch } = useFetchList<any>(ENDPOINT);
+  const { create, update, remove } = useCrudMutations(ENDPOINT, toast.handlePromise, refetch);
   const [isAdding, setIsAdding] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -18,24 +21,6 @@ export function TestimonialsTab({ toast }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const defaultState = { isActive: true, order: 0, clientName: '', clientRole: '', reviewText: '' };
   const [formData, setFormData] = useState<any>(defaultState);
-
-  const fetchItems = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/website/testimonials');
-      if (res.data.status === 'success') {
-        setItems(res.data.data || []);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
 
   const handleOpenNew = () => {
     setEditingId(null);
@@ -57,15 +42,12 @@ export function TestimonialsTab({ toast }: Props) {
     const isEditing = !!editingId;
     isEditing ? setIsUpdating(true) : setIsAdding(true);
     try {
-      const promise = isEditing
-        ? axios.patch(`/api/website/testimonials/${editingId}`, formData)
-        : axios.post('/api/website/testimonials', formData);
-      await toast.handlePromise(promise, {
-        successMessage: isEditing ? 'Testimonial updated successfully' : 'Testimonial added successfully',
-        errorMessage: 'Failed to save testimonial',
-      });
+      if (isEditing) {
+        await update(editingId as string, formData, 'Testimonial updated successfully', 'Failed to save testimonial');
+      } else {
+        await create(formData, 'Testimonial added successfully', 'Failed to save testimonial');
+      }
       setIsModalOpen(false);
-      fetchItems();
     } catch (err) {
       console.error(err);
     } finally {
@@ -76,11 +58,7 @@ export function TestimonialsTab({ toast }: Props) {
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this?')) {
       try {
-        await toast.handlePromise(axios.delete(`/api/website/testimonials/${id}`), {
-          successMessage: 'Testimonial deleted successfully',
-          errorMessage: 'Failed to delete testimonial',
-        });
-        fetchItems();
+        await remove(id, 'Testimonial deleted successfully', 'Failed to delete testimonial');
       } catch (err) {
         console.error(err);
       }

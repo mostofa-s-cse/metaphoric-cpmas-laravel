@@ -6,9 +6,16 @@ import Footer from '@/Components/website/Footer';
 import CustomCursor from '@/Components/website/CustomCursor';
 import RevealSection from '@/Components/website/RevealSection';
 
+const SERVICES_HERO_DEFAULT = {
+  title: 'Our',
+  highlight: 'Expertise',
+  description: 'From initial planning and architectural conceptualization to interior detailing and construction management, we craft spaces that blend timeless form with purposeful function.',
+};
+
 export default function ServicesPage() {
   const [services, setServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hero, setHero] = useState(SERVICES_HERO_DEFAULT);
 
   useEffect(() => {
     fetch('/api/website/public')
@@ -16,6 +23,14 @@ export default function ServicesPage() {
       .then((json) => {
         if (json?.data?.services) {
           setServices(json.data.services);
+        }
+        const servicesHero = json?.data?.sections?.find((s: any) => s.sectionKey === 'SERVICES_HERO');
+        if (servicesHero) {
+          setHero((prev) => ({
+            title: servicesHero.title || prev.title,
+            highlight: servicesHero.highlight || prev.highlight,
+            description: servicesHero.description || prev.description,
+          }));
         }
         setLoading(false);
       })
@@ -32,22 +47,22 @@ export default function ServicesPage() {
       <Navbar />
 
       {/* --- HERO BANNER --- */}
-      <section className="relative pt-48 pb-24 border-b border-[#D4AF37]/10 bg-[#1A1816]">
-        <div className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
+      <section className="relative pt-40 pb-20 border-b border-[#D4AF37]/10 bg-[#1A1816]">
+        <RevealSection className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
           <div className="max-w-3xl">
             <h1 className="text-5xl md:text-7xl font-playfair font-normal leading-tight text-[#FDFBF7] mb-6">
-              Our <i className="text-[#D4AF37]">Expertise</i>.
+              {hero.title} <i className="text-[#D4AF37]">{hero.highlight}</i>.
             </h1>
             <p className="text-[#A69F95] text-lg leading-relaxed font-light">
-              From initial planning and architectural conceptualization to interior detailing and construction management, we craft spaces that blend timeless form with purposeful function.
+              {hero.description}
             </p>
           </div>
-        </div>
+        </RevealSection>
         <div className="absolute right-0 bottom-0 top-0 w-1/3 bg-gradient-to-l from-[#D4AF37]/5 to-transparent pointer-events-none" />
       </section>
 
       {/* --- SERVICES GRID --- */}
-      <section className="py-32">
+      <section className="py-24">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
           {loading ? (
             <div className="text-center text-slate-500 py-12">Loading services...</div>

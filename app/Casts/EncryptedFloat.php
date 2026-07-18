@@ -7,6 +7,15 @@ use Illuminate\Database\Eloquent\Model;
 
 class EncryptedFloat implements CastsAttributes
 {
+    /**
+     * @param string|null $shadowColumn Optional plaintext decimal column
+     * (e.g. 'amountNumeric') kept in sync on every set() so SQL SUM/GROUP BY
+     * can aggregate this amount without decrypting every row in PHP.
+     */
+    public function __construct(private ?string $shadowColumn = null)
+    {
+    }
+
     private function getSecretKey(): string
     {
         $rawKey = env('ENCRYPTION_KEY', 'v3y-s3cr3t-k3y-32-bytes-long-123');
@@ -49,10 +58,10 @@ class EncryptedFloat implements CastsAttributes
     /**
      * Prepare the given value for storage (Encrypt to DB)
      */
-    public function set(Model $model, string $key, mixed $value, array $attributes): string
+    public function set(Model $model, string $key, mixed $value, array $attributes): array|string
     {
         if ($value === null || $value === '') {
-            return '';
+            return $this->shadowColumn ? [$key => '', $this->shadowColumn => 0] : '';
         }
 
         $strVal = (string) $value;
@@ -67,6 +76,12 @@ class EncryptedFloat implements CastsAttributes
             $iv
         );
 
-        return bin2hex($iv) . ':' . bin2hex($encrypted);
+        $encoded = bin2hex($iv) . ':' . bin2hex($encrypted);
+
+        if ($this->shadowColumn) {
+            return [$key => $encoded, $this->shadowColumn => round((float) $strVal, 2)];
+        }
+
+        return $encoded;
     }
 }

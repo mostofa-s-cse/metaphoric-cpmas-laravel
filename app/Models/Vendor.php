@@ -29,8 +29,8 @@ class Vendor extends Model
 
     protected $casts = [
         'contractAmount' => EncryptedFloat::class,
-        'paidAmount' => EncryptedFloat::class,
-        'dueAmount' => EncryptedFloat::class,
+        'paidAmount' => EncryptedFloat::class . ':paidAmountNumeric',
+        'dueAmount' => EncryptedFloat::class . ':dueAmountNumeric',
     ];
 
     public function cashOuts()

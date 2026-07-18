@@ -54,9 +54,9 @@ class WebsiteCmsSeeder extends Seeder
 
         // Portfolio
         $portfolioData = [
-            ['title' => 'The Vertex Tower', 'category' => 'Commercial', 'coverImage' => 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80', 'theChallenge' => 'A state-of-the-art 40-story commercial tower featuring sustainable green spaces.', 'order' => 1],
-            ['title' => 'Lumina Residences', 'category' => 'Residential', 'coverImage' => 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80', 'theChallenge' => 'Luxury apartments with panoramic city views and modern minimalist interiors.', 'order' => 2],
-            ['title' => 'Eco Pavilion', 'category' => 'Public Space', 'coverImage' => 'https://images.unsplash.com/photo-1449844908441-8829872d2607?auto=format&fit=crop&w=800&q=80', 'theChallenge' => 'An eco-friendly public gathering space built entirely with recycled materials.', 'order' => 3],
+            ['title' => 'The Vertex Tower', 'category' => 'Commercial', 'location' => 'Gulshan, Dhaka', 'coverImage' => 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80', 'theChallenge' => 'A state-of-the-art 40-story commercial tower featuring sustainable green spaces.', 'order' => 1],
+            ['title' => 'Lumina Residences', 'category' => 'Residential', 'location' => 'Banani, Dhaka', 'coverImage' => 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80', 'theChallenge' => 'Luxury apartments with panoramic city views and modern minimalist interiors.', 'order' => 2],
+            ['title' => 'Eco Pavilion', 'category' => 'Public Space', 'location' => 'Purbachal, Dhaka', 'coverImage' => 'https://images.unsplash.com/photo-1449844908441-8829872d2607?auto=format&fit=crop&w=800&q=80', 'theChallenge' => 'An eco-friendly public gathering space built entirely with recycled materials.', 'order' => 3],
         ];
 
         foreach ($portfolioData as $item) {

@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { Plus, Edit2, Trash2, Save, Loader2, Upload } from 'lucide-react';
 import { Modal } from '@/Components/ui/Modal';
 import { useToast } from '@/hooks/useToast';
+import { useFetchList } from '@/hooks/useFetchList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 interface Props {
   toast: ReturnType<typeof useToast>;
 }
 
 export function TeamTab({ toast }: Props) {
-  const [items, setItems] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { items, isLoading, refetch } = useFetchList<any>('/api/website/team');
+  const { create, update, remove } = useCrudMutations('/api/website/team', toast.handlePromise, refetch);
   const [isAdding, setIsAdding] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -22,24 +24,6 @@ export function TeamTab({ toast }: Props) {
   // Image picked but not yet uploaded — only sent to the server when Save
   // is clicked. formData.imageUrl holds a local blob preview in the meantime.
   const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
-
-  const fetchItems = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/website/team');
-      if (res.data.status === 'success') {
-        setItems(res.data.data || []);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
 
   const handleOpenNew = () => {
     setEditingId(null);
@@ -88,16 +72,13 @@ export function TeamTab({ toast }: Props) {
         payload[fieldName] = res.data.data.url;
       }
 
-      const promise = isEditing
-        ? axios.patch(`/api/website/team/${editingId}`, payload)
-        : axios.post('/api/website/team', payload);
-      await toast.handlePromise(promise, {
-        successMessage: isEditing ? 'Team member updated successfully' : 'Team member added successfully',
-        errorMessage: 'Failed to save team member',
-      });
+      if (isEditing) {
+        await update(editingId as string, payload, 'Team member updated successfully', 'Failed to save team member');
+      } else {
+        await create(payload, 'Team member added successfully', 'Failed to save team member');
+      }
       setIsModalOpen(false);
       setPendingFiles({});
-      fetchItems();
     } catch (err) {
       console.error(err);
       toast.error('Failed to save team member');
@@ -109,11 +90,7 @@ export function TeamTab({ toast }: Props) {
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this?')) {
       try {
-        await toast.handlePromise(axios.delete(`/api/website/team/${id}`), {
-          successMessage: 'Team member deleted successfully',
-          errorMessage: 'Failed to delete team member',
-        });
-        fetchItems();
+        await remove(id, 'Team member deleted successfully', 'Failed to delete team member');
       } catch (err) {
         console.error(err);
       }

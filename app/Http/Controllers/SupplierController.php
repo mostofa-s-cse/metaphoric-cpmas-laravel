@@ -52,6 +52,24 @@ class SupplierController extends Controller
             'Suppliers retrieved successfully', self::PATH);
     }
 
+    /**
+     * Lightweight, unpaginated list of all suppliers (id, name) for
+     * assignment dropdowns (e.g. Cash Out supplier payment picker).
+     */
+    public function list(Request $request)
+    {
+        $projectId = $request->get('projectId');
+
+        $query = Supplier::select('id', 'name')->orderBy('name');
+        if ($projectId) {
+            $query->whereHas('projectAssignments', function ($q) use ($projectId) {
+                $q->where('projectId', $projectId);
+            });
+        }
+
+        return $this->apiSuccess(['suppliers' => $query->get()], 'Suppliers list retrieved successfully', self::PATH);
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -65,7 +83,6 @@ class SupplierController extends Controller
             'assignments' => 'nullable|array',
             'assignments.*.projectId' => 'required_with:assignments|string',
             'assignments.*.contractAmount' => 'nullable|numeric',
-            'assignments.*.paidAmount' => 'nullable|numeric',
         ]);
 
         $assignments = $data['assignments'] ?? [];
@@ -73,24 +90,21 @@ class SupplierController extends Controller
 
         $openingBalance = (float) ($data['openingBalance'] ?? 0);
         $contractTotal = collect($assignments)->sum(fn ($a) => (float) ($a['contractAmount'] ?? 0));
-        $paidTotal = collect($assignments)->sum(fn ($a) => (float) ($a['paidAmount'] ?? 0));
-        $dueTotal = $contractTotal - $paidTotal;
 
         $data['openingBalance'] = $openingBalance;
-        $data['currentDue'] = $dueTotal + $openingBalance;
+        $data['currentDue'] = $contractTotal + $openingBalance;
 
         $supplier = Supplier::create($data);
 
         foreach ($assignments as $assignment) {
             $contractAmount = (float) ($assignment['contractAmount'] ?? 0);
-            $paidAmount = (float) ($assignment['paidAmount'] ?? 0);
 
             ProjectSupplier::create([
                 'supplierId' => $supplier->id,
                 'projectId' => $assignment['projectId'],
                 'contractAmount' => $contractAmount,
-                'paidAmount' => $paidAmount,
-                'dueAmount' => $contractAmount - $paidAmount,
+                'paidAmount' => 0,
+                'dueAmount' => $contractAmount,
             ]);
         }
 
@@ -119,36 +133,43 @@ class SupplierController extends Controller
             'assignments' => 'nullable|array',
             'assignments.*.projectId' => 'required_with:assignments|string',
             'assignments.*.contractAmount' => 'nullable|numeric',
-            'assignments.*.paidAmount' => 'nullable|numeric',
         ]);
 
         $hasAssignments = array_key_exists('assignments', $data);
         $assignments = $data['assignments'] ?? [];
         unset($data['assignments']);
 
-        $contractTotal = collect($assignments)->sum(fn ($a) => (float) ($a['contractAmount'] ?? 0));
-        $paidTotal = collect($assignments)->sum(fn ($a) => (float) ($a['paidAmount'] ?? 0));
-        $dueTotal = $contractTotal - $paidTotal;
+        if ($hasAssignments) {
+            // contractAmount is stored via an EncryptedFloat cast, so a SQL-level
+            // sum() would aggregate ciphertext. Load rows and sum in PHP so the
+            // cast is applied to each value first.
+            $oldContractTotal = (float) $supplier->projectAssignments()->get()->sum('contractAmount');
+            $newContractTotal = collect($assignments)->sum(fn ($a) => (float) ($a['contractAmount'] ?? 0));
 
-        $data['currentDue'] = $dueTotal + (float) $supplier->openingBalance;
+            $data['currentDue'] = (float) $supplier->currentDue + ($newContractTotal - $oldContractTotal);
+        }
 
         $supplier->update($data);
 
         if ($hasAssignments) {
-            ProjectSupplier::where('supplierId', $id)->delete();
+            $existingByProject = ProjectSupplier::where('supplierId', $id)->get()->keyBy('projectId');
+            $keepProjectIds = collect($assignments)->pluck('projectId')->all();
 
             foreach ($assignments as $assignment) {
                 $contractAmount = (float) ($assignment['contractAmount'] ?? 0);
-                $paidAmount = (float) ($assignment['paidAmount'] ?? 0);
+                $existingPaid = (float) ($existingByProject->get($assignment['projectId'])?->paidAmount ?? 0);
 
-                ProjectSupplier::create([
-                    'supplierId' => $id,
-                    'projectId' => $assignment['projectId'],
-                    'contractAmount' => $contractAmount,
-                    'paidAmount' => $paidAmount,
-                    'dueAmount' => $contractAmount - $paidAmount,
-                ]);
+                ProjectSupplier::updateOrCreate(
+                    ['supplierId' => $id, 'projectId' => $assignment['projectId']],
+                    [
+                        'contractAmount' => $contractAmount,
+                        'paidAmount' => $existingPaid,
+                        'dueAmount' => $contractAmount - $existingPaid,
+                    ]
+                );
             }
+
+            ProjectSupplier::where('supplierId', $id)->whereNotIn('projectId', $keepProjectIds)->delete();
         }
 
         return $this->apiSuccess(['supplier' => $supplier->fresh()], 'Supplier updated successfully', self::PATH);

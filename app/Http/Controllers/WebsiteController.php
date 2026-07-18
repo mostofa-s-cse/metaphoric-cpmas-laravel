@@ -57,25 +57,74 @@ class WebsiteController extends Controller
             $settings = WebsiteSettings::all();
         }
 
-        if ($sections->isEmpty()) {
-            WebsiteSection::insert([
-                [
-                    'id' => \Illuminate\Support\Str::uuid(),
-                    'sectionKey' => 'HERO', 'title' => 'Build', 'highlight' => 'Dreams.',
-                    'subtitle' => 'Architecture · Design · Planning · Dhaka',
-                    'description' => 'Metaphoric Architect delivers architecture, design, planning, and construction across Bangladesh.',
-                    'imageUrl' => 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=2800&q=80',
-                    'isActive' => 1, 'created_at' => now(), 'updated_at' => now(),
-                ],
-                [
-                    'id' => \Illuminate\Support\Str::uuid(),
-                    'sectionKey' => 'ABOUT_FIRM', 'title' => 'Spaces that speak', 'highlight' => 'purpose.',
-                    'subtitle' => '01. The Firm',
-                    'description' => 'Metaphoric Architect specializes in architecture, interior design, urban planning, construction management.',
-                    'imageUrl' => 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80',
-                    'isActive' => 1, 'created_at' => now(), 'updated_at' => now(),
-                ],
-            ]);
+        // Default copy for every known section key. Keyed by sectionKey so
+        // missing keys can be backfilled individually (not just on a totally
+        // empty table) — lets new page-content keys seed on already-deployed
+        // databases that already have HERO/ABOUT_FIRM.
+        $sectionDefaults = [
+            'HERO' => [
+                'title' => 'Build', 'highlight' => 'Dreams.',
+                'subtitle' => 'Architecture · Design · Planning · Dhaka',
+                'description' => 'Metaphoric Architect delivers architecture, design, planning, and construction across Bangladesh.',
+                'imageUrl' => 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=2800&q=80',
+            ],
+            'ABOUT_FIRM' => [
+                'title' => 'Spaces that speak', 'highlight' => 'purpose.',
+                'subtitle' => '01. The Firm',
+                'description' => 'Metaphoric Architect specializes in architecture, interior design, urban planning, construction management.',
+                'imageUrl' => 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80',
+            ],
+            'CONTACT_HERO' => [
+                'title' => "Let's talk", 'highlight' => 'design',
+                'description' => 'Reach out to discuss your residential, commercial, or urban project in {city} and across Bangladesh.',
+            ],
+            'FOOTER_CTA' => [
+                'title' => "Let's build your", 'highlight' => 'vision.',
+                'description' => 'Reach out to discuss your residential, commercial, or urban project in {city} and across Bangladesh.',
+            ],
+            'SERVICES_HERO' => [
+                'title' => 'Our', 'highlight' => 'Expertise',
+                'description' => 'From initial planning and architectural conceptualization to interior detailing and construction management, we craft spaces that blend timeless form with purposeful function.',
+            ],
+            'SERVICES_APPROACH' => [
+                'title' => 'Our Approach',
+                'extraData' => ['items' => [
+                    ['title' => 'Rigorous Detailing', 'description' => 'Every line drawn serves a functional and aesthetic purpose, detailed to absolute perfection.'],
+                    ['title' => 'Local Expertise', 'description' => 'Deep understanding of Dhaka\'s urban requirements, building codes, and material suppliers.'],
+                    ['title' => 'Sustainable Vision', 'description' => 'Crafting spaces that optimize light, ventilation, and minimize environmental impact.'],
+                    ['title' => 'End-to-End Delivery', 'description' => 'Bridging the gap between creative design blueprint and practical field execution.'],
+                ]],
+            ],
+            'SERVICES_SHOW_CTA' => [
+                'title' => 'Start Your Project',
+                'description' => "Let's sit down and discuss how we can transform your space. Get a tailored consult for this service.",
+            ],
+            'PORTFOLIO_HERO' => [
+                'title' => 'Our', 'highlight' => 'Portfolio',
+                'description' => 'Explore our curation of premium residential, commercial, and structural designs crafted across Dhaka and greater Bangladesh.',
+            ],
+            'PORTFOLIO_SHOW_CTA' => [
+                'title' => 'Request Similar Concept',
+                'description' => 'Inspired by this design? Begin a dialogue with us to discuss architectural planning for your specific space.',
+            ],
+            'TEAM_HERO' => [
+                'title' => 'Our', 'highlight' => 'Team',
+                'description' => 'Meet the architects, designers, urban planners, and project managers driving creative excellence and solid execution.',
+            ],
+            'TEAM_SHOW_QUOTE' => [
+                'description' => 'Architecture is a metaphor for human connection. We do not just build concrete structures; we model spaces that foster community and inspire dreams.',
+            ],
+        ];
+
+        $missingKeys = array_diff(array_keys($sectionDefaults), $sections->pluck('sectionKey')->all());
+
+        if (!empty($missingKeys)) {
+            foreach ($missingKeys as $key) {
+                WebsiteSection::create(array_merge(
+                    ['sectionKey' => $key, 'isActive' => true],
+                    $sectionDefaults[$key]
+                ));
+            }
             $sections = WebsiteSection::where('isActive', true)->get();
         }
 
@@ -339,7 +388,7 @@ class WebsiteController extends Controller
     public function storePortfolio(Request $request)
     {
         $data = $request->validate([
-            'title' => 'required|string', 'category' => 'required|string', 'coverImage' => 'required|string',
+            'title' => 'required|string', 'category' => 'required|string', 'location' => 'nullable|string', 'coverImage' => 'required|string',
             'beforeImage' => 'nullable|string', 'afterImage' => 'nullable|string',
             'images' => 'nullable|array', 'images.*' => 'string',
             'theChallenge' => 'nullable|string', 'theSolution' => 'nullable|string', 'theOutcome' => 'nullable|string',

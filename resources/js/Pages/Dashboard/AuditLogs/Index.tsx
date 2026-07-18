@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import axios from 'axios';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { useResourceList } from '@/hooks/useResourceList';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
@@ -30,77 +31,33 @@ export default function AuditLogsPage() {
   const currentUser = auth?.user;
   const { toasts, removeToast, success, error, handlePromise } = useToast();
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [actionGroup, setActionGroup] = useState('ALL');
   const [entityType, setEntityType] = useState('ALL');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  const [page, setPage] = useState(1);
-  const limit = 15;
-
   // Pruning state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isPruning, setIsPruning] = useState(false);
 
-  // Data states
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [totalLogs, setTotalLogs] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isFetching, setIsFetching] = useState(false);
-  const [fetchError, setFetchError] = useState(false);
+  const {
+    items: auditLogs, totalItems: totalLogs, isFetching, fetchError, refetch,
+    page, setPage, limit, searchTerm, setSearchTerm,
+  } = useResourceList<AuditLog>('/api/audit-logs', {
+    listKey: 'auditLogs',
+    totalKey: 'total',
+    initialLimit: 15,
+    searchDelay: 450,
+    filters: { actionGroup, entityType, startDate, endDate },
+  });
 
-  // Debounce search input to prevent database spamming
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-      setPage(1); // Reset to page 1 on search
-    }, 450);
+  // The table's blocking loading state and the Refresh button's inline
+  // spinner both map to the hook's single isFetching flag (it fires on
+  // every page/search/filter refetch, matching the previous isLoading
+  // semantics of this page).
+  const isLoading = isFetching;
 
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
-
-  const fetchAuditLogs = async (isSilent = false) => {
-    if (!isSilent) setIsLoading(true);
-    else setIsFetching(true);
-    setFetchError(false);
-
-    try {
-      const res = await axios.get('/api/audit-logs', {
-        params: {
-          page,
-          limit,
-          search: debouncedSearch,
-          actionGroup,
-          entityType,
-          startDate,
-          endDate,
-        }
-      });
-      if (res.data.status === 'success') {
-        setAuditLogs(res.data.data.auditLogs || []);
-        setTotalLogs(res.data.data.total || 0);
-        setTotalPages(res.data.data.totalPages || 1);
-      } else {
-        setFetchError(true);
-      }
-    } catch (err) {
-      setFetchError(true);
-    } finally {
-      setIsLoading(false);
-      setIsFetching(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAuditLogs();
-  }, [page, debouncedSearch, actionGroup, entityType, startDate, endDate]);
-
-  const refetch = () => {
-    fetchAuditLogs(true);
-  };
+  const totalPages = Math.ceil(totalLogs / limit) || 1;
 
   // Reset to page 1 on filter changes
   const handleActionGroupChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -125,7 +82,6 @@ export default function AuditLogsPage() {
 
   const handleClearFilters = () => {
     setSearchTerm('');
-    setDebouncedSearch('');
     setActionGroup('ALL');
     setEntityType('ALL');
     setStartDate('');
@@ -142,7 +98,7 @@ export default function AuditLogsPage() {
         { successMessage: 'Audit logs pruned successfully' }
       );
       setDeleteConfirmOpen(false);
-      fetchAuditLogs();
+      refetch();
     } catch (err) {
       // Handled by toast helper
     } finally {

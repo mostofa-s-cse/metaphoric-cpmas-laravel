@@ -33,8 +33,8 @@ class Salary extends Model
         'bonus' => EncryptedFloat::class,
         'deduction' => EncryptedFloat::class,
         'netSalary' => EncryptedFloat::class,
-        'paidAmount' => EncryptedFloat::class,
-        'dueAmount' => EncryptedFloat::class,
+        'paidAmount' => EncryptedFloat::class . ':paidAmountNumeric',
+        'dueAmount' => EncryptedFloat::class . ':dueAmountNumeric',
     ];
 
     public function employee()

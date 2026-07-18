@@ -15,6 +15,8 @@ import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { useResourceList } from '@/hooks/useResourceList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
   PackageSearch, Plus, Search, Truck, FolderKanban, DollarSign, Calendar, Layers, X, Trash2, Edit2, Loader2, Info
@@ -35,6 +37,7 @@ const materialSchema = z.object({
   projectId: z.string().min(1, 'Project is required'),
   purchaseDate: z.string().min(1, 'Purchase date is required'),
   invoiceNumber: z.string().optional().or(z.literal('')),
+  paidNow: z.boolean(),
 }).superRefine((values, ctx) => {
   if (values.supplierId === 'OTHER' && !values.newSupplierName?.trim()) {
     ctx.addIssue({
@@ -59,6 +62,7 @@ interface ApiMaterial {
   invoiceNumber?: string;
   projectId: string;
   supplierId: string;
+  cashOut?: { id: string } | null;
   project: {
     id: string;
     name: string;
@@ -76,22 +80,18 @@ export default function MaterialsPage() {
   const { toasts, removeToast, success, error, handlePromise } = useToast();
 
   // Data states
-  const [materials, setMaterials] = useState<ApiMaterial[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
 
-  // Loading/Fetching states
-  const [isFetching, setIsFetching] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
+  const {
+    items: materials, setItems: setMaterials, totalItems, isFetching, fetchError, refetch: fetchMaterials,
+    page, setPage, limit, setLimit, searchTerm, setSearchTerm,
+  } = useResourceList<ApiMaterial>('/api/materials', {
+    listKey: 'materials',
+  });
 
-  // Search filter state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
+  const { create: createMaterial, update: updateMaterial, remove: removeMaterial } =
+    useCrudMutations('/api/materials', handlePromise, fetchMaterials);
 
   // Form modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -126,35 +126,12 @@ export default function MaterialsPage() {
       projectId: '',
       purchaseDate: new Date().toISOString().split('T')[0],
       invoiceNumber: '',
+      paidNow: true,
     },
     mode: 'all',
   });
 
   const selectedSupplierId = watch('supplierId');
-
-  const fetchMaterials = async () => {
-    setIsFetching(true);
-    setFetchError(false);
-    try {
-      const res = await axios.get('/api/materials', {
-        params: {
-          page,
-          limit,
-          search: debouncedSearchTerm,
-        }
-      });
-      if (res.data.status === 'success') {
-        setMaterials(res.data.data.materials || []);
-        setTotalItems(res.data.data.total || 0);
-      } else {
-        setFetchError(true);
-      }
-    } catch (err) {
-      setFetchError(true);
-    } finally {
-      setIsFetching(false);
-    }
-  };
 
   const fetchDependencies = async () => {
     try {
@@ -170,20 +147,8 @@ export default function MaterialsPage() {
   };
 
   useEffect(() => {
-    fetchMaterials();
-  }, [page, limit, debouncedSearchTerm]);
-
-  useEffect(() => {
     fetchDependencies();
   }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   const handleOpenCreate = () => {
     if (projects.length === 0) {
@@ -208,6 +173,7 @@ export default function MaterialsPage() {
       projectId: '',
       purchaseDate: new Date().toISOString().split('T')[0],
       invoiceNumber: '',
+      paidNow: true,
     });
     setIsModalOpen(true);
   };
@@ -226,6 +192,7 @@ export default function MaterialsPage() {
       projectId: mat.projectId,
       purchaseDate: mat.purchaseDate.split('T')[0],
       invoiceNumber: mat.invoiceNumber || '',
+      paidNow: !!mat.cashOut,
     });
     setIsModalOpen(true);
   };
@@ -239,10 +206,7 @@ export default function MaterialsPage() {
     if (!materialToDelete) return;
     setIsDeleting(true);
     try {
-      await handlePromise(axios.delete(`/api/materials/${materialToDelete}`), {
-        successMessage: 'Purchase record deleted successfully',
-      });
-      fetchMaterials();
+      await removeMaterial(materialToDelete, 'Purchase record deleted successfully');
       setDeleteConfirmOpen(false);
       setMaterialToDelete(null);
     } catch (err) {
@@ -261,15 +225,10 @@ export default function MaterialsPage() {
         unitPrice: parseFloat(values.unitPrice),
       };
       if (modalMode === 'create') {
-        await handlePromise(axios.post('/api/materials', payload), {
-          successMessage: 'Material purchase logged successfully',
-        });
+        await createMaterial(payload, 'Material purchase logged successfully');
       } else if (selectedMaterialId) {
-        await handlePromise(axios.patch(`/api/materials/${selectedMaterialId}`, payload), {
-          successMessage: 'Material purchase record updated successfully',
-        });
+        await updateMaterial(selectedMaterialId, payload, 'Material purchase record updated successfully');
       }
-      fetchMaterials();
       // A supplierId of "OTHER" creates a brand-new Supplier server-side;
       // refresh the dropdown's options so it (and its name) is selectable
       // the next time this material is opened for edit.
@@ -390,7 +349,14 @@ export default function MaterialsPage() {
                           @ {formatCurrencyLocal(mat.unitPrice)}
                         </span>
                       </td>
-                      <td className="py-4 px-4 font-bold text-slate-200">{formatCurrencyLocal(mat.totalPrice)}</td>
+                      <td className="py-4 px-4 font-bold text-slate-200">
+                        {formatCurrencyLocal(mat.totalPrice)}
+                        {!mat.cashOut && (
+                          <span className="block mt-1 text-[9px] font-bold text-amber-400 uppercase tracking-wider">
+                            Unpaid (Credit)
+                          </span>
+                        )}
+                      </td>
                       <td className="py-4 px-4 text-slate-500 font-mono text-[10px]">
                         {new Date(mat.purchaseDate).toLocaleDateString()}
                       </td>
@@ -564,6 +530,18 @@ export default function MaterialsPage() {
               </div>
             </div>
 
+            <div className="flex items-center gap-3 py-1">
+              <input
+                type="checkbox"
+                id="paidNow"
+                {...register('paidNow')}
+                className="h-4 w-4 rounded border-slate-800 bg-slate-950 text-cyan-500 focus:ring-cyan-500/30 focus:ring-opacity-25"
+              />
+              <label htmlFor="paidNow" className="text-slate-400 text-xs font-semibold cursor-pointer">
+                Paid now (cash)? Uncheck if bought on credit — settle later via Supplier Payment in Transactions.
+              </label>
+            </div>
+
             <div className="pt-4 flex justify-end gap-2.5">
               <Button
                 type="button"
@@ -588,7 +566,7 @@ export default function MaterialsPage() {
           onClose={() => setDeleteConfirmOpen(false)}
           onConfirm={confirmDelete}
           title="Delete Record?"
-          description="Delete this purchase record? The associated expense transaction logged under the project accounts will also be deleted."
+          description="Delete this purchase record? The associated expense transaction (if any) logged under the project accounts will also be deleted."
           confirmText="Delete"
           isConfirming={isDeleting}
         />

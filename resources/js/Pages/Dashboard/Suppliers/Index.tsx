@@ -15,6 +15,8 @@ import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { useResourceList } from '@/hooks/useResourceList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
   Truck, Plus, Search, Phone, Mail, MapPin, X, Trash2, Edit2, Loader2, Clock, History
@@ -32,9 +34,6 @@ const supplierSchema = z.object({
     contractAmount: z.string().refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 0, {
       message: 'Contract amount must be a non-negative number',
     }),
-    paidAmount: z.string().refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 0, {
-      message: 'Paid amount must be a non-negative number',
-    }).optional().or(z.literal('')),
   })).optional(),
 });
 
@@ -60,20 +59,19 @@ export default function SuppliersPage() {
   const user = auth?.user;
   const { toasts, removeToast, success, error, handlePromise } = useToast();
 
-  const [suppliers, setSuppliers] = useState<ApiSupplier[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
-  const [isFetching, setIsFetching] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
-
-  // Search filter state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [projectFilter, setProjectFilter] = useState('ALL');
 
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
+  const {
+    items: suppliers, setItems: setSuppliers, totalItems, isFetching, fetchError, refetch: fetchSuppliers,
+    page, setPage, limit, setLimit, searchTerm, setSearchTerm,
+  } = useResourceList<ApiSupplier>('/api/suppliers', {
+    listKey: 'suppliers',
+    filters: { projectId: projectFilter !== 'ALL' ? projectFilter : undefined },
+  });
+
+  const { create: createSupplier, update: updateSupplier, remove: removeSupplier } =
+    useCrudMutations('/api/suppliers', handlePromise, fetchSuppliers);
 
   // Form modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -117,31 +115,6 @@ export default function SuppliersPage() {
     name: 'assignments',
   });
 
-  const fetchSuppliers = async () => {
-    setIsFetching(true);
-    setFetchError(false);
-    try {
-      const res = await axios.get('/api/suppliers', {
-        params: {
-          page,
-          limit,
-          search: debouncedSearchTerm,
-          projectId: projectFilter !== 'ALL' ? projectFilter : undefined,
-        }
-      });
-      if (res.data.status === 'success') {
-        setSuppliers(res.data.data.suppliers || []);
-        setTotalItems(res.data.data.total || 0);
-      } else {
-        setFetchError(true);
-      }
-    } catch (err) {
-      setFetchError(true);
-    } finally {
-      setIsFetching(false);
-    }
-  };
-
   const fetchProjects = async () => {
     try {
       const res = await axios.get('/api/projects');
@@ -154,20 +127,8 @@ export default function SuppliersPage() {
   };
 
   useEffect(() => {
-    fetchSuppliers();
-  }, [page, limit, projectFilter, debouncedSearchTerm]);
-
-  useEffect(() => {
     fetchProjects();
   }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   // Track updates to selected supplier when the list refreshes (e.g. after an
   // edit or delete elsewhere), without clobbering the richer detail fields
@@ -220,7 +181,6 @@ export default function SuppliersPage() {
       assignments: sup.projectAssignments?.map(a => ({
         projectId: a.projectId,
         contractAmount: a.contractAmount.toString(),
-        paidAmount: a.paidAmount.toString(),
       })) || [],
     });
     setIsModalOpen(true);
@@ -236,10 +196,7 @@ export default function SuppliersPage() {
     if (!supplierToDelete) return;
     setIsDeleting(true);
     try {
-      await handlePromise(axios.delete(`/api/suppliers/${supplierToDelete}`), {
-        successMessage: 'Supplier deleted successfully',
-      });
-      fetchSuppliers();
+      await removeSupplier(supplierToDelete, 'Supplier deleted successfully');
       if (selectedSupplier?.id === supplierToDelete) {
         setIsHistoryOpen(false);
       }
@@ -261,19 +218,13 @@ export default function SuppliersPage() {
         assignments: values.assignments?.map(a => ({
           projectId: a.projectId,
           contractAmount: parseFloat(a.contractAmount || '0'),
-          paidAmount: parseFloat(a.paidAmount || '0'),
         })) || [],
       };
       if (modalMode === 'create') {
-        await handlePromise(axios.post('/api/suppliers', payload), {
-          successMessage: 'Supplier created successfully',
-        });
+        await createSupplier(payload, 'Supplier created successfully');
       } else if (selectedSupplierId) {
-        await handlePromise(axios.patch(`/api/suppliers/${selectedSupplierId}`, payload), {
-          successMessage: 'Supplier updated successfully',
-        });
+        await updateSupplier(selectedSupplierId, payload, 'Supplier updated successfully');
       }
-      fetchSuppliers();
       setIsModalOpen(false);
     } catch (err) {
       // ignore
@@ -696,7 +647,7 @@ export default function SuppliersPage() {
                     </h4>
                     <button
                       type="button"
-                      onClick={() => append({ projectId: '', contractAmount: '', paidAmount: '' })}
+                      onClick={() => append({ projectId: '', contractAmount: '' })}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-transparent border border-slate-500 hover:border-slate-300 rounded-md text-[11px] font-semibold text-slate-200 transition-all cursor-pointer"
                     >
                       <Plus className="h-3.5 w-3.5 text-cyan-400" />
@@ -730,14 +681,6 @@ export default function SuppliersPage() {
                             <Input
                               placeholder="0.00"
                               {...register(`assignments.${index}.contractAmount`)}
-                            />
-                          </div>
-
-                          <div className="w-28">
-                            <label className="block text-slate-400 text-[11px] font-semibold mb-1.5">Paid ($)</label>
-                            <Input
-                              placeholder="0"
-                              {...register(`assignments.${index}.paidAmount`)}
                             />
                           </div>
 

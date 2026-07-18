@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { Plus, Edit2, Trash2, Save, Loader2, Upload } from 'lucide-react';
 import { Modal } from '@/Components/ui/Modal';
 import { useToast } from '@/hooks/useToast';
+import { useFetchList } from '@/hooks/useFetchList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 interface Props {
   toast: ReturnType<typeof useToast>;
 }
 
 export function ServicesTab({ toast }: Props) {
-  const [items, setItems] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { items, isLoading, refetch } = useFetchList<any>('/api/website/services');
+  const { create, update, remove } = useCrudMutations('/api/website/services', toast.handlePromise, refetch);
   const [isAdding, setIsAdding] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -22,24 +24,6 @@ export function ServicesTab({ toast }: Props) {
   // Image picked but not yet uploaded — only sent to the server when Save
   // is clicked. formData.imageUrl holds a local blob preview in the meantime.
   const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
-
-  const fetchItems = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/website/services');
-      if (res.data.status === 'success') {
-        setItems(res.data.data || []);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
 
   const handleOpenNew = () => {
     setEditingId(null);
@@ -82,16 +66,13 @@ export function ServicesTab({ toast }: Props) {
         payload[fieldName] = res.data.data.url;
       }
 
-      const promise = isEditing
-        ? axios.patch(`/api/website/services/${editingId}`, payload)
-        : axios.post('/api/website/services', payload);
-      await toast.handlePromise(promise, {
-        successMessage: isEditing ? 'Service updated successfully' : 'Service added successfully',
-        errorMessage: 'Failed to save service',
-      });
+      if (isEditing) {
+        await update(editingId as string, payload, 'Service updated successfully', 'Failed to save service');
+      } else {
+        await create(payload, 'Service added successfully', 'Failed to save service');
+      }
       setIsModalOpen(false);
       setPendingFiles({});
-      fetchItems();
     } catch (err) {
       console.error(err);
       toast.error('Failed to save service');
@@ -103,11 +84,7 @@ export function ServicesTab({ toast }: Props) {
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this?')) {
       try {
-        await toast.handlePromise(axios.delete(`/api/website/services/${id}`), {
-          successMessage: 'Service deleted successfully',
-          errorMessage: 'Failed to delete service',
-        });
-        fetchItems();
+        await remove(id, 'Service deleted successfully', 'Failed to delete service');
       } catch (err) {
         console.error(err);
       }

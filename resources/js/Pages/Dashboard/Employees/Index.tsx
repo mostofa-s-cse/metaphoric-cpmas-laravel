@@ -16,11 +16,25 @@ import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { useResourceList } from '@/hooks/useResourceList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
   Users2, Plus, Search, Building, DollarSign, X, Loader2, UserPlus, CreditCard, Trash2, Edit2,
   History, Wallet, Receipt,
 } from 'lucide-react';
+
+function monthsBetween(startMonth: string, endMonth: string): string[] {
+  const months: string[] = [];
+  let [y, m] = startMonth.split('-').map(Number);
+  const [endY, endM] = endMonth.split('-').map(Number);
+  while (y < endY || (y === endY && m <= endM)) {
+    months.push(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return months;
+}
 
 const employeeStatusEnum = z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED']);
 const employeeSchema = z.object({
@@ -72,23 +86,14 @@ export default function EmployeesPage() {
 
   const [activeTab, setActiveTab] = useState<'expense' | 'employees' | 'salary'>('employees');
   const [salaryMonthFilter, setSalaryMonthFilter] = useState(''); // '' = all months
+  const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
 
-  // Database lists
-  const [employees, setEmployees] = useState<ApiEmployee[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
-
-  // Loading/fetching states
-  const [isFetchingEmployees, setIsFetchingEmployees] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
-
-  // Search states
-  const [searchEmployee, setSearchEmployee] = useState('');
-  const [debouncedSearchEmployee, setDebouncedSearchEmployee] = useState('');
-
-  // Pagination states
-  const [empPage, setEmpPage] = useState(1);
-  const [empLimit, setEmpLimit] = useState(10);
-  const [empTotal, setEmpTotal] = useState(0);
+  // Employees list — paginated/searchable via useResourceList (mirrors Suppliers/Vendor).
+  const {
+    items: employees, totalItems: empTotal, isFetching: isFetchingEmployees, fetchError,
+    refetch: fetchEmployees, page: empPage, setPage: setEmpPage, limit: empLimit, setLimit: setEmpLimit,
+    searchTerm: searchEmployee, setSearchTerm: setSearchEmployee,
+  } = useResourceList<ApiEmployee>('/api/employees', { listKey: 'employees' });
 
   // Modals state
   const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
@@ -102,18 +107,24 @@ export default function EmployeesPage() {
   // Full (unpaginated) employee list — used by the Employee Salary tab (totals
   // per employee), since the paginated `employees` list may not include
   // everyone. Employee headcount grows slowly (staff, not transactions), so
-  // an all-at-once list stays cheap here unlike cash-out ledgers.
-  const [allEmployees, setAllEmployees] = useState<ApiEmployee[]>([]);
-  const [isFetchingAllEmployees, setIsFetchingAllEmployees] = useState(true);
+  // an all-at-once list stays cheap here unlike cash-out ledgers. Reuses
+  // useResourceList (not useFetchList) because /api/employees always
+  // responds shaped as { employees, total } — useFetchList assumes
+  // res.data.data IS the array directly, which doesn't apply here.
+  const {
+    items: allEmployees, isFetching: isFetchingAllEmployees, refetch: fetchAllEmployees,
+  } = useResourceList<ApiEmployee>('/api/employees', { listKey: 'employees', initialLimit: 1000 });
 
   // Office Expense ledger — fetched page-by-page, filtered server-side to
   // office-overhead categories, instead of pulling up to 1000 cash-outs and
   // filtering client-side (which silently drops older rows past that cap).
-  const [officeCashOuts, setOfficeCashOuts] = useState<any[]>([]);
-  const [isFetchingCashOuts, setIsFetchingCashOuts] = useState(true);
-  const [expensePage, setExpensePage] = useState(1);
-  const [expenseLimit, setExpenseLimit] = useState(10);
-  const [expenseTotal, setExpenseTotal] = useState(0);
+  const {
+    items: officeCashOuts, totalItems: expenseTotal, isFetching: isFetchingCashOuts, refetch: fetchOfficeCashOuts,
+    page: expensePage, setPage: setExpensePage, limit: expenseLimit, setLimit: setExpenseLimit,
+  } = useResourceList<any>('/api/transactions/cash-out', {
+    listKey: 'cashOuts',
+    filters: { categories: OFFICE_CATEGORY_KEYS.join(',') },
+  });
 
   // Pay Salary modal: payment history
   const [salaryHistory, setSalaryHistory] = useState<any[]>([]);
@@ -138,7 +149,6 @@ export default function EmployeesPage() {
   // Office expense form state
   const [expenseFormData, setExpenseFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    projectId: '',
     expenseCategory: 'OFFICE_RENT',
     paidTo: '',
     amount: '',
@@ -174,85 +184,11 @@ export default function EmployeesPage() {
     mode: 'all',
   });
 
-  const fetchEmployees = async () => {
-    setIsFetchingEmployees(true);
-    try {
-      const res = await axios.get('/api/employees', {
-        params: { page: empPage, limit: empLimit, search: debouncedSearchEmployee }
-      });
-      if (res.data.status === 'success') {
-        setEmployees(res.data.data.employees || []);
-        setEmpTotal(res.data.data.total || 0);
-      }
-    } catch (err) {
-      setFetchError(true);
-    } finally {
-      setIsFetchingEmployees(false);
-    }
-  };
-
-  const fetchAllEmployees = async () => {
-    setIsFetchingAllEmployees(true);
-    try {
-      const res = await axios.get('/api/employees', { params: { limit: 1000 } });
-      if (res.data.status === 'success') {
-        setAllEmployees(res.data.data.employees || []);
-      }
-    } catch (err) {
-      // silent
-    } finally {
-      setIsFetchingAllEmployees(false);
-    }
-  };
-
-  const fetchOfficeCashOuts = async () => {
-    setIsFetchingCashOuts(true);
-    try {
-      const res = await axios.get('/api/transactions/cash-out', {
-        params: { categories: OFFICE_CATEGORY_KEYS.join(','), page: expensePage, limit: expenseLimit },
-      });
-      if (res.data.status === 'success') {
-        setOfficeCashOuts(res.data.data.cashOuts || []);
-        setExpenseTotal(res.data.data.total || 0);
-      }
-    } catch (err) {
-      // silent
-    } finally {
-      setIsFetchingCashOuts(false);
-    }
-  };
-
-  const fetchProjects = async () => {
-    try {
-      const res = await axios.get('/api/projects');
-      if (res.data.status === 'success') {
-        setProjects(res.data.data.projects || []);
-      }
-    } catch (err) {
-      // silent fail
-    }
-  };
-
-  useEffect(() => {
-    fetchEmployees();
-  }, [empPage, empLimit, debouncedSearchEmployee]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchEmployee(searchEmployee);
-      setEmpPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchEmployee]);
-
-  useEffect(() => {
-    fetchProjects();
-    fetchAllEmployees();
-  }, []);
-
-  useEffect(() => {
-    fetchOfficeCashOuts();
-  }, [expensePage, expenseLimit]);
+  // Combined refetch used by both the employee list and the salary tab's
+  // full roster, since create/edit/delete need to refresh both.
+  const refetchEmployeeLists = () => { fetchEmployees(); fetchAllEmployees(); };
+  const { create: createEmployee, update: updateEmployee, remove: removeEmployee } =
+    useCrudMutations('/api/employees', handlePromise, refetchEmployeeLists);
 
   const handleOpenEmployeeCreate = () => {
     setEmployeeModalMode('create');
@@ -293,16 +229,10 @@ export default function EmployeesPage() {
     try {
       const payload = { ...values, monthlySalary: parseFloat(values.monthlySalary) };
       if (employeeModalMode === 'create') {
-        await handlePromise(axios.post('/api/employees', payload), {
-          successMessage: 'Employee created successfully'
-        });
+        await createEmployee(payload, 'Employee created successfully');
       } else if (selectedEmployeeId) {
-        await handlePromise(axios.patch(`/api/employees/${selectedEmployeeId}`, payload), {
-          successMessage: 'Employee updated successfully'
-        });
+        await updateEmployee(selectedEmployeeId, payload, 'Employee updated successfully');
       }
-      fetchEmployees();
-      fetchAllEmployees();
       setIsEmployeeModalOpen(false);
     } catch (err) {
       // handled
@@ -319,11 +249,7 @@ export default function EmployeesPage() {
   const confirmDelete = async () => {
     if (!employeeToDelete) return;
     try {
-      await handlePromise(axios.delete(`/api/employees/${employeeToDelete}`), {
-        successMessage: 'Employee deleted successfully'
-      });
-      fetchEmployees();
-      fetchAllEmployees();
+      await removeEmployee(employeeToDelete, 'Employee deleted successfully');
       setDeleteConfirmOpen(false);
       setEmployeeToDelete(null);
     } catch (err) {
@@ -357,7 +283,7 @@ export default function EmployeesPage() {
       referenceNumber: '',
       notes: '',
     });
-    fetchAvailableBalance(null, 'EMPLOYEE_SALARY');
+    fetchAvailableBalance('EMPLOYEE_SALARY');
     setIsSalaryModalOpen(true);
   };
 
@@ -373,13 +299,13 @@ export default function EmployeesPage() {
   // percentage/category rules in Settings > Main Balance, and the exact
   // amount storeCashOut/processSalary will enforce on submit.
   const [balanceInfo, setBalanceInfo] = useState<{
-    source: 'main' | 'project'; allocated: number; available: number; spent: number; percentage: number;
+    source: 'main' | 'project'; allocated: number; available: number; spent: number;
   } | null>(null);
 
-  const fetchAvailableBalance = async (projectId: string | null, category: string) => {
+  const fetchAvailableBalance = async (category: string) => {
     try {
       const res = await axios.get('/api/transactions/available-balance', {
-        params: { projectId: projectId || undefined, category },
+        params: { category },
       });
       if (res.data.status === 'success') {
         setBalanceInfo(res.data.data);
@@ -390,10 +316,26 @@ export default function EmployeesPage() {
   };
 
   useEffect(() => {
-    if (isExpenseModalOpen && expenseFormData.projectId) {
-      fetchAvailableBalance(expenseFormData.projectId, expenseFormData.expenseCategory);
+    if (isExpenseModalOpen) {
+      fetchAvailableBalance(expenseFormData.expenseCategory);
     }
-  }, [isExpenseModalOpen, expenseFormData.projectId, expenseFormData.expenseCategory]);
+  }, [isExpenseModalOpen, expenseFormData.expenseCategory]);
+
+  // Salary disbursement is create-only and per-employee, so the mutation
+  // endpoint is derived from whichever employee is currently selected.
+  // fetchSalaryHistory itself stays a plain function (not useFetchList/
+  // useResourceList) since it's invoked imperatively for an arbitrary
+  // employee id chosen at click-time — it doesn't fit either hook's
+  // fixed-endpoint, auto-fetch-on-mount assumption.
+  const refetchSalary = () => {
+    if (selectedEmployee) fetchSalaryHistory(selectedEmployee.id);
+    fetchAllEmployees();
+  };
+  const { create: createSalary } = useCrudMutations(
+    selectedEmployee ? `/api/employees/${selectedEmployee.id}/salaries` : '',
+    handlePromise,
+    refetchSalary
+  );
 
   const handleDisburseSalarySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -406,8 +348,8 @@ export default function EmployeesPage() {
     const paid = parseFloat(salaryFormData.paidAmount) || 0;
 
     try {
-      await handlePromise(
-        axios.post(`/api/employees/${selectedEmployee.id}/salaries`, {
+      await createSalary(
+        {
           month: salaryFormData.month,
           basicSalary: basic,
           bonus: bonus,
@@ -416,13 +358,9 @@ export default function EmployeesPage() {
           paymentMethod: salaryFormData.paymentMethod,
           referenceNumber: salaryFormData.referenceNumber,
           notes: salaryFormData.notes,
-        }),
-        {
-          successMessage: `Successfully logged salary disbursement of ${formatCurrencyLocal(paid)} for ${selectedEmployee.fullName}`
-        }
+        },
+        `Successfully logged salary disbursement of ${formatCurrencyLocal(paid)} for ${selectedEmployee.fullName}`
       );
-      fetchSalaryHistory(selectedEmployee.id);
-      fetchAllEmployees();
       setIsSalaryModalOpen(false);
     } catch (err) {
       // handled
@@ -431,12 +369,14 @@ export default function EmployeesPage() {
     }
   };
 
+  // Office expense log is create-only; refetch mirrors the original
+  // "reset to page 1, then refetch" so a freshly-logged expense is visible
+  // even if the ledger wasn't already on page 1.
+  const refetchExpense = () => { setExpensePage(1); fetchOfficeCashOuts(); };
+  const { create: createExpense } = useCrudMutations('/api/transactions/cash-out', handlePromise, refetchExpense);
+
   const handleExpenseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expenseFormData.projectId) {
-      error('Select the project this expense is being paid from');
-      return;
-    }
     const amount = parseFloat(expenseFormData.amount) || 0;
     if (amount <= 0) {
       error('Enter a valid expense amount');
@@ -445,24 +385,21 @@ export default function EmployeesPage() {
 
     setIsLoggingExpense(true);
     try {
-      await handlePromise(
-        axios.post('/api/transactions/cash-out', {
+      await createExpense(
+        {
           date: expenseFormData.date,
-          projectId: expenseFormData.projectId,
+          projectId: null,
           expenseCategory: expenseFormData.expenseCategory,
           paidTo: expenseFormData.paidTo || OFFICE_EXPENSE_CATEGORIES.find((c) => c.key === expenseFormData.expenseCategory)?.label,
           amount,
           paymentMethod: expenseFormData.paymentMethod,
           referenceNumber: expenseFormData.referenceNumber,
           notes: expenseFormData.notes,
-        }),
-        { successMessage: `Successfully logged office expense of ${formatCurrencyLocal(amount)}` }
+        },
+        `Successfully logged office expense of ${formatCurrencyLocal(amount)}`
       );
-      setExpensePage(1);
-      fetchOfficeCashOuts();
       setExpenseFormData({
         date: new Date().toISOString().split('T')[0],
-        projectId: expenseFormData.projectId,
         expenseCategory: 'OFFICE_RENT',
         paidTo: '',
         amount: '',
@@ -487,8 +424,8 @@ export default function EmployeesPage() {
       return <div className="mt-2 text-[10px] text-slate-600">Loading balance...</div>;
     }
     const label = info.source === 'main'
-      ? `Main Balance (All Projects, ${info.percentage}%)`
-      : `Project Balance (${info.percentage}% of budget)`;
+      ? 'Main Balance (All Projects)'
+      : 'Project Balance';
     return (
       <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[10px]">
         <div className="p-1.5 bg-slate-950/40 border border-slate-800 rounded-lg">
@@ -789,10 +726,28 @@ export default function EmployeesPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
                       {allEmployees.map((emp: any) => {
-                        const salaries = (emp.salaries || []).filter((s: any) => !salaryMonthFilter || s.month === salaryMonthFilter);
-                        const totalPaid = salaries.reduce((s: number, sal: any) => s + (sal.paidAmount || 0), 0);
-                        const totalDue = salaries.reduce((s: number, sal: any) => s + (sal.dueAmount || 0), 0);
-                        const notProcessed = salaryMonthFilter && salaries.length === 0;
+                        const joiningMonth = emp.joiningDate ? emp.joiningDate.slice(0, 7) : currentMonthStr;
+                        const salaryByMonth = new Map<string, any>((emp.salaries || []).map((s: any) => [s.month, s]));
+                        const filterOutOfRange = !!salaryMonthFilter && (salaryMonthFilter < joiningMonth || salaryMonthFilter > currentMonthStr);
+                        const relevantMonths = salaryMonthFilter
+                          ? [salaryMonthFilter]
+                          : monthsBetween(joiningMonth, currentMonthStr);
+
+                        let totalPaid = 0;
+                        let totalDue = 0;
+                        if (!filterOutOfRange) {
+                          relevantMonths.forEach((month) => {
+                            if (month < joiningMonth || month > currentMonthStr) return;
+                            const sal = salaryByMonth.get(month);
+                            if (sal) {
+                              totalPaid += sal.paidAmount || 0;
+                              totalDue += sal.dueAmount || 0;
+                            } else {
+                              // No salary logged for this month yet — the full month's salary is owed.
+                              totalDue += emp.monthlySalary || 0;
+                            }
+                          });
+                        }
                         return (
                           <tr key={emp.id} className="hover:bg-slate-800/20 transition-colors">
                             <td className="p-4">
@@ -803,10 +758,10 @@ export default function EmployeesPage() {
                               {formatCurrencyLocal(emp.monthlySalary)}
                             </td>
                             <td className="p-4 text-right font-bold text-emerald-400">
-                              {notProcessed ? <span className="text-slate-600 italic font-normal">Not processed</span> : formatCurrencyLocal(totalPaid)}
+                              {filterOutOfRange ? <span className="text-slate-600 italic font-normal">Not processed</span> : formatCurrencyLocal(totalPaid)}
                             </td>
                             <td className={`p-4 text-right font-bold ${totalDue > 0 ? 'text-amber-400' : 'text-slate-600'}`}>
-                              {notProcessed ? '—' : formatCurrencyLocal(totalDue)}
+                              {filterOutOfRange ? '—' : formatCurrencyLocal(totalDue)}
                             </td>
                             {user && ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'].includes(user.role) && (
                               <td className="p-4 text-right">
@@ -992,23 +947,6 @@ export default function EmployeesPage() {
         >
           <form onSubmit={handleExpenseSubmit} className="space-y-4">
             <div>
-              <label className="block text-slate-450 text-xs font-semibold mb-2">Pay From Project</label>
-              <Select
-                value={expenseFormData.projectId}
-                onChange={(e) => setExpenseFormData({ ...expenseFormData, projectId: e.target.value })}
-                required
-              >
-                <option value="" disabled className="bg-slate-900 text-slate-250">Select Project...</option>
-                {projects.map((p: any) => (
-                  <option key={p.id} value={p.id} className="bg-slate-900 text-slate-200">
-                    {p.code} - {p.name}
-                  </option>
-                ))}
-              </Select>
-              <BalanceWidget info={balanceInfo} />
-            </div>
-
-            <div>
               <label className="block text-slate-450 text-xs font-semibold mb-2">Expense Category</label>
               <Select
                 value={expenseFormData.expenseCategory}
@@ -1018,6 +956,7 @@ export default function EmployeesPage() {
                   <option key={c.key} value={c.key} className="bg-slate-900 text-slate-200">{c.label}</option>
                 ))}
               </Select>
+              <BalanceWidget info={balanceInfo} />
             </div>
 
             <div>
@@ -1101,7 +1040,7 @@ export default function EmployeesPage() {
             size="md"
           >
             <form onSubmit={handleDisburseSalarySubmit} className="space-y-4">
-              <div className="p-3 border border-slate-800 rounded-xl bg-slate-950/40 text-xs space-y-1">
+              <div className="p-3 border border-slate-800 rounded-xl bg-slate-950/40 text-xs text-slate-200 space-y-1">
                 <p>
                   <span className="font-bold text-slate-400">Employee:</span> {selectedEmployee.fullName}
                 </p>

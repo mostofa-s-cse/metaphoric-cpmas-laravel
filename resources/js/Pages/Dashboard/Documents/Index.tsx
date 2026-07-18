@@ -13,6 +13,8 @@ import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { useResourceList } from '@/hooks/useResourceList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
   FileText, Plus, Search, FolderKanban, Truck, Briefcase, X, Trash2, Loader2,
@@ -64,25 +66,27 @@ export default function DocumentsPage() {
   const user = auth?.user;
   const { toasts, removeToast, success, error, handlePromise } = useToast();
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [projectFilter, setProjectFilter] = useState('ALL');
 
   // Database states
-  const [documents, setDocuments] = useState<ApiDocument[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
 
-  // Fetching states
-  const [isFetching, setIsFetching] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
+  const {
+    items: documents, setItems: setDocuments, totalItems, isFetching, fetchError, refetch: fetchDocuments,
+    page, setPage, limit, setLimit, searchTerm, setSearchTerm,
+  } = useResourceList<ApiDocument>('/api/documents', {
+    listKey: 'documents',
+    filters: {
+      category: categoryFilter !== 'ALL' ? categoryFilter : undefined,
+      projectId: projectFilter !== 'ALL' ? (projectFilter === 'GENERAL' ? 'null' : projectFilter) : undefined,
+    },
+  });
 
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
+  const { create: createDocument, remove: removeDocument } =
+    useCrudMutations('/api/documents', handlePromise, fetchDocuments);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -116,32 +120,6 @@ export default function DocumentsPage() {
     mode: 'all',
   });
 
-  const fetchDocuments = async () => {
-    setIsFetching(true);
-    setFetchError(false);
-    try {
-      const res = await axios.get('/api/documents', {
-        params: {
-          page,
-          limit,
-          search: debouncedSearchTerm,
-          category: categoryFilter !== 'ALL' ? categoryFilter : undefined,
-          projectId: projectFilter !== 'ALL' ? (projectFilter === 'GENERAL' ? 'null' : projectFilter) : undefined,
-        }
-      });
-      if (res.data.status === 'success') {
-        setDocuments(res.data.data.documents || []);
-        setTotalItems(res.data.data.total || 0);
-      } else {
-        setFetchError(true);
-      }
-    } catch (err) {
-      setFetchError(true);
-    } finally {
-      setIsFetching(false);
-    }
-  };
-
   const fetchDependencies = async () => {
     try {
       const [resPrj, resSup, resVnd] = await Promise.all([
@@ -158,20 +136,8 @@ export default function DocumentsPage() {
   };
 
   useEffect(() => {
-    fetchDocuments();
-  }, [page, limit, categoryFilter, projectFilter, debouncedSearchTerm]);
-
-  useEffect(() => {
     fetchDependencies();
   }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   const handleOpenCreate = () => {
     reset({
@@ -216,15 +182,12 @@ export default function DocumentsPage() {
         ...values,
         url: fileUrl,
         fileType: selectedFile.name.split('.').pop()?.toUpperCase() || values.fileType,
-        projectId: values.projectId || null,
+        projectId: values.projectId === 'GENERAL' || !values.projectId ? null : values.projectId,
         supplierId: values.supplierId || null,
         vendorId: values.vendorId || null,
       };
 
-      await handlePromise(axios.post('/api/documents', payload), {
-        successMessage: 'Document uploaded successfully',
-      });
-      fetchDocuments();
+      await createDocument(payload, 'Document uploaded successfully');
       setIsModalOpen(false);
     } catch (err: any) {
       // ignore
@@ -242,10 +205,7 @@ export default function DocumentsPage() {
     if (!deleteId) return;
     setIsDeleting(true);
     try {
-      await handlePromise(axios.delete(`/api/documents/${deleteId}`), {
-        successMessage: 'Document deleted successfully',
-      });
-      fetchDocuments();
+      await removeDocument(deleteId, 'Document deleted successfully');
       setDeleteId(null);
     } catch (err) {
       // ignore
@@ -516,7 +476,8 @@ export default function DocumentsPage() {
                     <Select
                       {...register('projectId')}
                     >
-                      <option value="" className="bg-slate-900 text-slate-250">General Corporate (No Project)</option>
+                      <option value="" disabled className="bg-slate-900 text-slate-250">Select Project...</option>
+                      <option value="GENERAL" className="bg-slate-900 text-slate-250">General Corporate (No Project)</option>
                       {projects.map((p) => (
                         <option key={p.id} value={p.id} className="bg-slate-900 text-slate-200">
                           {p.code} - {p.name}

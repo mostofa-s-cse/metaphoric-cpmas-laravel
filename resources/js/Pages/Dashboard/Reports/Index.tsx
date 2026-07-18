@@ -222,7 +222,6 @@ export default function ReportsPage() {
       const cfData = [
         ['Total Cash In', `+${formatVal(totalCashIn)}`, [16, 185, 129]], // green-600
         ['Total Cash Out', `-${formatVal(totalCashOut)}`, [239, 68, 68]], // red-500
-        ['Total Amount', formatVal(totalCashIn + totalCashOut), [71, 85, 105]], // slate-600
         ['Net Profit / Loss', formatVal(netProfit), netProfit >= 0 ? [5, 150, 105] : [220, 38, 38]],
       ];
       cfData.forEach(([label, val, color]) => {
@@ -457,7 +456,7 @@ export default function ReportsPage() {
             <Wallet className="h-4.5 w-4.5 text-cyan-400" />
             Cash Flow Statement
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-xl">
               <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Total Cash In</span>
               <span className="text-base font-bold text-emerald-400">+{formatVal(totalCashIn)}</span>
@@ -465,10 +464,6 @@ export default function ReportsPage() {
             <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-xl">
               <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Total Cash Out</span>
               <span className="text-base font-bold text-rose-400">-{formatVal(totalCashOut)}</span>
-            </div>
-            <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-xl">
-              <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Total Amount</span>
-              <span className="text-base font-bold text-slate-200">{formatVal(totalCashIn + totalCashOut)}</span>
             </div>
             <div className="p-4 bg-slate-950/40 border border-cyan-500/20 rounded-xl">
               <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Net Profit / Loss</span>

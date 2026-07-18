@@ -16,6 +16,8 @@ import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { useResourceList } from '@/hooks/useResourceList';
+import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
   HardHat, Plus, Search, UserPlus, Users2, Trash2, Loader2, CalendarCheck, Check, X, AlertCircle,
@@ -59,18 +61,15 @@ export default function LaboursPage() {
   const [wagesProjectFilter, setWagesProjectFilter] = useState('ALL');
   const [wagesMonthFilter, setWagesMonthFilter] = useState(''); // '' = all months
 
-  const [labours, setLabours] = useState<ApiLabour[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
 
-  const [isFetchingLabours, setIsFetchingLabours] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
+  const {
+    items: labours, setItems: setLabours, totalItems: labTotal, isFetching: isFetchingLabours, fetchError, refetch: fetchLabours,
+    page: labPage, setPage: setLabPage, limit: labLimit, setLimit: setLabLimit, searchTerm: searchLabour, setSearchTerm: setSearchLabour,
+  } = useResourceList<ApiLabour>('/api/labours', { listKey: 'labours' });
 
-  const [searchLabour, setSearchLabour] = useState('');
-  const [debouncedSearchLabour, setDebouncedSearchLabour] = useState('');
-
-  const [labPage, setLabPage] = useState(1);
-  const [labLimit, setLabLimit] = useState(10);
-  const [labTotal, setLabTotal] = useState(0);
+  const { create: createLabour, remove: removeLabour } =
+    useCrudMutations('/api/labours', handlePromise, fetchLabours);
 
   // Attendance logging states
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -121,23 +120,6 @@ export default function LaboursPage() {
     },
     mode: 'all',
   });
-
-  const fetchLabours = async () => {
-    setIsFetchingLabours(true);
-    try {
-      const res = await axios.get('/api/labours', {
-        params: { page: labPage, limit: labLimit, search: debouncedSearchLabour }
-      });
-      if (res.data.status === 'success') {
-        setLabours(res.data.data.labours || []);
-        setLabTotal(res.data.data.total || 0);
-      }
-    } catch (err) {
-      setFetchError(true);
-    } finally {
-      setIsFetchingLabours(false);
-    }
-  };
 
   const fetchProjects = async () => {
     try {
@@ -201,9 +183,18 @@ export default function LaboursPage() {
     }
   };
 
-  useEffect(() => {
-    fetchLabours();
-  }, [labPage, labLimit, debouncedSearchLabour]);
+  const { create: saveAttendance } = useCrudMutations('/api/attendance', handlePromise, fetchAttendance);
+
+  const { create: payLabourWage } = useCrudMutations(
+    '/api/transactions/cash-out',
+    handlePromise,
+    () => {
+      if (selectedLabourForWage) {
+        fetchWageHistory(selectedLabourForWage.id);
+      }
+      fetchWageTotals();
+    }
+  );
 
   useEffect(() => {
     fetchProjects();
@@ -212,14 +203,6 @@ export default function LaboursPage() {
   useEffect(() => {
     fetchWageTotals();
   }, [wagesProjectFilter, wagesMonthFilter]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchLabour(searchLabour);
-      setLabPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchLabour]);
 
   useEffect(() => {
     fetchAttendance();
@@ -244,13 +227,10 @@ export default function LaboursPage() {
   const onLabourSubmit = async (values: LabourFormValues) => {
     setIsCreatingLabour(true);
     try {
-      await handlePromise(axios.post('/api/labours', {
+      await createLabour({
         ...values,
         dailyWage: parseFloat(values.dailyWage),
-      }), {
-        successMessage: 'Worker registered successfully'
-      });
-      fetchLabours();
+      }, 'Worker registered successfully');
       setIsLabourModalOpen(false);
     } catch (err) {
       // handled
@@ -267,10 +247,7 @@ export default function LaboursPage() {
   const confirmDelete = async () => {
     if (!labourToDelete) return;
     try {
-      await handlePromise(axios.delete(`/api/labours/${labourToDelete}`), {
-        successMessage: 'Labour record deleted successfully'
-      });
-      fetchLabours();
+      await removeLabour(labourToDelete, 'Labour record deleted successfully');
       setDeleteConfirmOpen(false);
       setLabourToDelete(null);
     } catch (err) {
@@ -290,16 +267,10 @@ export default function LaboursPage() {
     });
 
     try {
-      await handlePromise(
-        axios.post('/api/attendance', {
-          date: selectedDate,
-          records: recordsArray,
-        }),
-        {
-          successMessage: 'Labor attendance logs saved successfully'
-        }
-      );
-      fetchAttendance();
+      await saveAttendance({
+        date: selectedDate,
+        records: recordsArray,
+      }, 'Labor attendance logs saved successfully');
     } catch (err) {
       // handled
     } finally {
@@ -348,22 +319,17 @@ export default function LaboursPage() {
 
     setIsPayingWage(true);
     try {
-      await handlePromise(
-        axios.post('/api/transactions/cash-out', {
-          date: wageFormData.date,
-          projectId: wageFormData.projectId,
-          expenseCategory: 'LABOR',
-          paidTo: selectedLabourForWage.name,
-          amount,
-          paymentMethod: wageFormData.paymentMethod,
-          referenceNumber: wageFormData.referenceNumber,
-          notes: wageFormData.notes,
-          labourId: selectedLabourForWage.id,
-        }),
-        { successMessage: `Successfully paid ${formatCurrencyLocal(amount)} wages to ${selectedLabourForWage.name}` }
-      );
-      fetchWageHistory(selectedLabourForWage.id);
-      fetchWageTotals();
+      await payLabourWage({
+        date: wageFormData.date,
+        projectId: wageFormData.projectId,
+        expenseCategory: 'LABOR',
+        paidTo: selectedLabourForWage.name,
+        amount,
+        paymentMethod: wageFormData.paymentMethod,
+        referenceNumber: wageFormData.referenceNumber,
+        notes: wageFormData.notes,
+        labourId: selectedLabourForWage.id,
+      }, `Successfully paid ${formatCurrencyLocal(amount)} wages to ${selectedLabourForWage.name}`);
       setIsWageModalOpen(false);
     } catch (err) {
       // handled

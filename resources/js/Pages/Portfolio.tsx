@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, MapPin } from 'lucide-react';
 import Navbar from '@/Components/website/Navbar';
 import Footer from '@/Components/website/Footer';
 import CustomCursor from '@/Components/website/CustomCursor';
@@ -10,15 +10,23 @@ interface PortfolioItem {
   id: string;
   title: string;
   category: string;
+  location: string | null;
   coverImage: string;
   order: number;
   theChallenge: string | null;
 }
 
+const PORTFOLIO_HERO_DEFAULT = {
+  title: 'Our',
+  highlight: 'Portfolio',
+  description: 'Explore our curation of premium residential, commercial, and structural designs crafted across Dhaka and greater Bangladesh.',
+};
+
 export default function PortfolioPage() {
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [loading, setLoading] = useState(true);
+  const [hero, setHero] = useState(PORTFOLIO_HERO_DEFAULT);
 
   useEffect(() => {
     fetch('/api/website/public')
@@ -26,6 +34,14 @@ export default function PortfolioPage() {
       .then((json) => {
         if (json?.data?.portfolio) {
           setItems(json.data.portfolio);
+        }
+        const portfolioHero = json?.data?.sections?.find((s: any) => s.sectionKey === 'PORTFOLIO_HERO');
+        if (portfolioHero) {
+          setHero((prev) => ({
+            title: portfolioHero.title || prev.title,
+            highlight: portfolioHero.highlight || prev.highlight,
+            description: portfolioHero.description || prev.description,
+          }));
         }
         setLoading(false);
       })
@@ -49,17 +65,17 @@ export default function PortfolioPage() {
       <Navbar />
 
       {/* --- HERO BANNER --- */}
-      <section className="relative pt-48 pb-24 border-b border-[#D4AF37]/10 bg-[#1A1816]">
-        <div className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
+      <section className="relative pt-40 pb-20 border-b border-[#D4AF37]/10 bg-[#1A1816]">
+        <RevealSection className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
           <div className="max-w-3xl">
             <h1 className="text-5xl md:text-7xl font-playfair font-normal leading-tight text-[#FDFBF7] mb-6">
-              Our <i className="text-[#D4AF37]">Portfolio</i>.
+              {hero.title} <i className="text-[#D4AF37]">{hero.highlight}</i>.
             </h1>
             <p className="text-[#A69F95] text-lg leading-relaxed font-light">
-              Explore our curation of premium residential, commercial, and structural designs crafted across Dhaka and greater Bangladesh.
+              {hero.description}
             </p>
           </div>
-        </div>
+        </RevealSection>
       </section>
 
       {/* --- FILTER NAVIGATION --- */}
@@ -84,7 +100,7 @@ export default function PortfolioPage() {
       </section>
 
       {/* --- PORTFOLIO LIST --- */}
-      <section className="py-24">
+      <section className="py-20">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
           {loading ? (
             <div className="text-center text-slate-500 py-12">Loading portfolio...</div>
@@ -121,9 +137,17 @@ export default function PortfolioPage() {
                         <h4 className="text-3xl font-playfair text-[#FDFBF7] mb-2 group-hover:text-[#D4AF37] transition-colors duration-500">
                           {proj.title}
                         </h4>
-                        <p className="text-[#A69F95] text-xs tracking-widest uppercase font-light mb-3">
-                          {proj.category}
-                        </p>
+                        <div className="flex items-center gap-3 mb-3">
+                          <p className="text-[#A69F95] text-xs tracking-widest uppercase font-light">
+                            {proj.category}
+                          </p>
+                          {proj.location && (
+                            <p className="flex items-center gap-1 text-[#8C8477] text-xs font-light">
+                              <MapPin className="h-3 w-3" />
+                              {proj.location}
+                            </p>
+                          )}
+                        </div>
                         {proj.theChallenge && (
                           <p className="text-[#8C8477] text-sm font-light leading-relaxed line-clamp-2 break-words">
                             {proj.theChallenge.length > 150 ? proj.theChallenge.slice(0, 150) + '...' : proj.theChallenge}

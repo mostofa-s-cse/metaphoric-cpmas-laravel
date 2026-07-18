@@ -43,4 +43,10 @@ class Material extends Model
     {
         return $this->belongsTo(Project::class, 'projectId');
     }
+
+    /** Present only for purchases logged as paid on the spot (paidNow=true). */
+    public function cashOut()
+    {
+        return $this->hasOne(CashOut::class, 'materialId');
+    }
 }

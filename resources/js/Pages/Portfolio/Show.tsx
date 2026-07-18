@@ -1,19 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, MapPin } from 'lucide-react';
 import Navbar from '@/Components/website/Navbar';
 import Footer from '@/Components/website/Footer';
 import CustomCursor from '@/Components/website/CustomCursor';
 import RevealSection from '@/Components/website/RevealSection';
+import ImageLightbox from '@/Components/website/ImageLightbox';
 
 interface Props {
   id: string;
 }
 
+const SHOW_CTA_DEFAULT = {
+  title: 'Request Similar Concept',
+  description: 'Inspired by this design? Begin a dialogue with us to discuss architectural planning for your specific space.',
+};
+
 export default function ProjectDetailPage({ id }: Props) {
   const [project, setProject] = useState<any>(null);
   const [otherProjects, setOtherProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cta, setCta] = useState(SHOW_CTA_DEFAULT);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
     fetch('/api/website/public')
@@ -26,6 +34,13 @@ export default function ProjectDetailPage({ id }: Props) {
             setProject(found);
             setOtherProjects(list.filter((p: any) => p.id !== id).slice(0, 2));
           }
+        }
+        const ctaSection = json?.data?.sections?.find((s: any) => s.sectionKey === 'PORTFOLIO_SHOW_CTA');
+        if (ctaSection) {
+          setCta((prev) => ({
+            title: ctaSection.title || prev.title,
+            description: ctaSection.description || prev.description,
+          }));
         }
         setLoading(false);
       })
@@ -57,6 +72,16 @@ export default function ProjectDetailPage({ id }: Props) {
   // Parse metrics
   const metrics = project.projectMetrics ? (project.projectMetrics as Record<string, any>) : {};
 
+  // Every banner/before/after/gallery image on this page, in display order,
+  // so clicking any one opens the lightbox with prev/next across all of them.
+  const lightboxImages: string[] = [
+    project.coverImage,
+    project.beforeImage,
+    project.afterImage,
+    ...(Array.isArray(project.images) ? project.images : []),
+  ].filter(Boolean);
+  const openLightbox = (img: string) => setLightboxIndex(lightboxImages.indexOf(img));
+
   return (
     <div className="min-h-screen bg-[#141210] text-[#E8E3DB] font-sans selection:bg-[#D4AF37]/30 selection:text-[#FDFBF7] overflow-x-hidden font-inter">
       <Head title={project.title} />
@@ -64,10 +89,10 @@ export default function ProjectDetailPage({ id }: Props) {
       <Navbar />
 
       {/* --- HERO BANNER --- */}
-      <section className="relative pt-48 pb-20 border-b border-[#D4AF37]/10 bg-[#1A1816]">
-        <div className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
-          <Link 
-            href="/portfolio" 
+      <section className="relative pt-40 pb-16 border-b border-[#D4AF37]/10 bg-[#1A1816]">
+        <RevealSection className="max-w-[1400px] mx-auto px-6 lg:px-12 relative z-10">
+          <Link
+            href="/portfolio"
             className="inline-flex items-center gap-3 text-[10px] font-medium tracking-[0.2em] uppercase text-[#D4AF37] hover:text-[#E8E3DB] transition-colors group mb-8 w-fit"
           >
             <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-1.5 transition-transform" />
@@ -75,29 +100,38 @@ export default function ProjectDetailPage({ id }: Props) {
           </Link>
           <div className="flex flex-col lg:flex-row justify-between lg:items-end gap-8">
             <div>
-              <span className="text-[10px] font-medium tracking-[0.4em] text-[#D4AF37] uppercase mb-4 block">
-                {project.category}
-              </span>
+              <div className="flex items-center gap-4 mb-4">
+                <span className="text-[10px] font-medium tracking-[0.4em] text-[#D4AF37] uppercase">
+                  {project.category}
+                </span>
+                {project.location && (
+                  <span className="flex items-center gap-1.5 text-[10px] font-medium tracking-[0.2em] text-[#8C8477] uppercase">
+                    <MapPin className="h-3 w-3" />
+                    {project.location}
+                  </span>
+                )}
+              </div>
               <h1 className="text-4xl md:text-6xl lg:text-7xl font-playfair font-normal leading-tight text-[#FDFBF7] max-w-4xl">
                 {project.title}
               </h1>
             </div>
           </div>
-        </div>
+        </RevealSection>
       </section>
 
       {/* --- PROJECT HERO IMAGE --- */}
-      <section className="relative aspect-[16/7] w-full overflow-hidden border-b border-[#D4AF37]/10">
-        <img 
-          src={project.coverImage} 
-          alt={project.title} 
-          className="w-full h-full object-cover" 
+      <RevealSection className="relative aspect-[16/7] w-full overflow-hidden border-b border-[#D4AF37]/10 block">
+        <img
+          src={project.coverImage}
+          alt={project.title}
+          onClick={() => openLightbox(project.coverImage)}
+          className="w-full h-full object-cover cursor-zoom-in"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#141210] via-transparent to-transparent opacity-60"></div>
-      </section>
+        <div className="absolute inset-0 bg-gradient-to-t from-[#141210] via-transparent to-transparent opacity-60 pointer-events-none"></div>
+      </RevealSection>
 
       {/* --- DETAILS SECTION --- */}
-      <section className="py-24">
+      <section className="py-20">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
             
@@ -146,10 +180,11 @@ export default function ProjectDetailPage({ id }: Props) {
                     {project.beforeImage && (
                       <div className="space-y-4">
                         <div className="relative aspect-[4/3] overflow-hidden border border-[#D4AF37]/10">
-                          <img 
-                            src={project.beforeImage} 
-                            alt="Before" 
-                            className="w-full h-full object-cover grayscale-[40%]" 
+                          <img
+                            src={project.beforeImage}
+                            alt="Before"
+                            onClick={() => openLightbox(project.beforeImage)}
+                            className="w-full h-full object-cover grayscale-[40%] cursor-zoom-in"
                           />
                           <div className="absolute top-4 left-4 bg-[#141210]/80 backdrop-blur-md px-3 py-1 text-[9px] tracking-widest text-[#8C8477] uppercase border border-[#D4AF37]/10">
                             Before
@@ -161,10 +196,11 @@ export default function ProjectDetailPage({ id }: Props) {
                     {project.afterImage && (
                       <div className="space-y-4">
                         <div className="relative aspect-[4/3] overflow-hidden border border-[#D4AF37]/20">
-                          <img 
-                            src={project.afterImage} 
-                            alt="After" 
-                            className="w-full h-full object-cover" 
+                          <img
+                            src={project.afterImage}
+                            alt="After"
+                            onClick={() => openLightbox(project.afterImage)}
+                            className="w-full h-full object-cover cursor-zoom-in"
                           />
                           <div className="absolute top-4 left-4 bg-[#D4AF37]/90 px-3 py-1 text-[9px] tracking-widest text-[#141210] uppercase font-bold">
                             After
@@ -186,7 +222,8 @@ export default function ProjectDetailPage({ id }: Props) {
                         <img
                           src={img}
                           alt={`${project.title} gallery ${idx + 1}`}
-                          className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                          onClick={() => openLightbox(img)}
+                          className="w-full h-full object-cover hover:scale-105 transition-transform duration-500 cursor-zoom-in"
                         />
                       </div>
                     ))}
@@ -199,12 +236,23 @@ export default function ProjectDetailPage({ id }: Props) {
             <div className="space-y-12">
               
               {/* Project Metrics */}
-              {Object.keys(metrics).length > 0 && (
+              {(project.location || Object.keys(metrics).length > 0) && (
                 <RevealSection className="bg-[#1A1816] border border-[#D4AF37]/10 p-8 space-y-6">
                   <h3 className="text-lg font-playfair text-[#FDFBF7] pb-4 border-b border-[#D4AF37]/10">
                     Project Details
                   </h3>
                   <div className="space-y-6">
+                    {project.location && (
+                      <div>
+                        <h4 className="text-[9px] font-medium tracking-[0.2em] text-[#8C8477] uppercase mb-1">
+                          Location
+                        </h4>
+                        <p className="text-sm text-[#E8E3DB] font-light leading-relaxed flex items-center gap-2">
+                          <MapPin className="h-3.5 w-3.5 text-[#D4AF37]" />
+                          {project.location}
+                        </p>
+                      </div>
+                    )}
                     {Object.entries(metrics).map(([key, val]) => (
                       <div key={key}>
                         <h4 className="text-[9px] font-medium tracking-[0.2em] text-[#8C8477] uppercase mb-1">
@@ -223,10 +271,10 @@ export default function ProjectDetailPage({ id }: Props) {
               <RevealSection delay={200} className="bg-[#1A1816] border border-[#D4AF37]/15 p-8 relative overflow-hidden group">
                 <div className="absolute inset-0 bg-[#D4AF37]/5 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-700 pointer-events-none"></div>
                 <h3 className="text-xl font-playfair text-[#FDFBF7] mb-4">
-                  Request Similar Concept
+                  {cta.title}
                 </h3>
                 <p className="text-xs text-[#A69F95] leading-relaxed mb-8 font-light">
-                  Inspired by this design? Begin a dialogue with us to discuss architectural planning for your specific space.
+                  {cta.description}
                 </p>
                 <a 
                   href="#contact" 
@@ -266,6 +314,15 @@ export default function ProjectDetailPage({ id }: Props) {
       </section>
 
       <Footer />
+
+      {lightboxIndex !== null && (
+        <ImageLightbox
+          images={lightboxImages}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onIndexChange={setLightboxIndex}
+        />
+      )}
 
       <style dangerouslySetInnerHTML={{ __html: `
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500&display=swap');

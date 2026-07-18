@@ -5,25 +5,23 @@ namespace App\Http\Controllers;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\Project;
-use App\Models\ProjectVendor;
-use App\Models\Supplier;
-use App\Models\Vendor;
 use App\Traits\ApiResponse;
 use App\Traits\HasMainBalance;
+use App\Traits\SyncsPartnerBalances;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class TransactionController extends Controller
 {
-    use ApiResponse, HasMainBalance;
+    use ApiResponse, HasMainBalance, SyncsPartnerBalances;
 
     const PATH_IN = '/transactions/cash-in';
     const PATH_OUT = '/transactions/cash-out';
 
     // Source-of-truth enum lists (must match the Next.js original's dropdown options).
     const CASH_IN_SOURCES = 'SIGNING_AGREEMENT,MATERIAL_PREPS,LABER_PREPS,RUNNING_BILL,FINAL_BILL,CLIENT_PAYMENT,ADVANCE_PAYMENT,INSTALLMENT,OTHER_INCOME';
-    const CASH_OUT_CATEGORIES = 'SIGNING_AGREEMENT,MATERIAL_PREPS,LABER_PREPS,RUNNING_BILL,FINAL_BILL,MATERIALS,LABOR,VENDOR_PAYMENT,OFFICE_RENT,UTILITIES,TRANSPORTATION,FUEL,EQUIPMENT_RENTAL,EMPLOYEE_SALARY,MISCELLANEOUS';
+    const CASH_OUT_CATEGORIES = 'SIGNING_AGREEMENT,MATERIAL_PREPS,LABER_PREPS,RUNNING_BILL,FINAL_BILL,MATERIALS,LABOR,VENDOR_PAYMENT,SUPPLIER_PAYMENT,OFFICE_RENT,UTILITIES,TRANSPORTATION,FUEL,EQUIPMENT_RENTAL,EMPLOYEE_SALARY,MISCELLANEOUS';
 
     // ─── Cash In ──────────────────────────────────────────────────────────────
 
@@ -177,56 +175,11 @@ class TransactionController extends Controller
 
         $cashOut = CashOut::create($data);
 
-        $this->syncVendorBalance($vendorId, $projectId, $amount, +1);
-        $this->syncSupplierBalance($supplierId, $amount, +1);
+        $this->syncVendorBalance($vendorId, $projectId, $amount, +1, $cashOut->id);
+        $this->syncSupplierBalance($supplierId, $projectId, $amount, +1, $cashOut->id);
 
         return $this->apiCreated(['cashOut' => $cashOut->load(['project:id,name,code'])],
             'Cash-out transaction recorded', self::PATH_OUT);
-    }
-
-    /**
-     * Applies (sign=+1) or reverses (sign=-1) a vendor payment's effect on
-     * the vendor's global due/paid and, when project-scoped, the matching
-     * ProjectVendor row. Shared by storeCashOut (apply) and destroyCashOut
-     * (reverse) so the due/paid math can't drift between the two.
-     */
-    private function syncVendorBalance(?string $vendorId, ?string $projectId, float $amount, int $sign): void
-    {
-        if (!$vendorId) {
-            return;
-        }
-
-        $vendor = Vendor::find($vendorId);
-        if ($vendor) {
-            $vendor->paidAmount = (float) $vendor->paidAmount + ($sign * $amount);
-            $vendor->dueAmount = (float) $vendor->dueAmount - ($sign * $amount);
-            $vendor->save();
-        }
-
-        if ($projectId) {
-            $projectVendors = ProjectVendor::where('vendorId', $vendorId)
-                ->where('projectId', $projectId)
-                ->get();
-            foreach ($projectVendors as $pv) {
-                $pv->paidAmount = (float) $pv->paidAmount + ($sign * $amount);
-                $pv->dueAmount = (float) $pv->dueAmount - ($sign * $amount);
-                $pv->save();
-            }
-        }
-    }
-
-    /** Applies (sign=+1) or reverses (sign=-1) a supplier payment's effect on currentDue. */
-    private function syncSupplierBalance(?string $supplierId, float $amount, int $sign): void
-    {
-        if (!$supplierId) {
-            return;
-        }
-
-        $supplier = Supplier::find($supplierId);
-        if ($supplier) {
-            $supplier->currentDue = (float) $supplier->currentDue - ($sign * $amount);
-            $supplier->save();
-        }
     }
 
     public function updateCashOut(Request $request, string $id)
@@ -281,8 +234,8 @@ class TransactionController extends Controller
 
         $amount = (float) $cashOut->amount;
 
-        $this->syncVendorBalance($cashOut->vendorId, $cashOut->projectId, $amount, -1);
-        $this->syncSupplierBalance($cashOut->supplierId, $amount, -1);
+        $this->syncVendorBalance($cashOut->vendorId, $cashOut->projectId, $amount, -1, $cashOut->id);
+        $this->syncSupplierBalance($cashOut->supplierId, $cashOut->projectId, $amount, -1, $cashOut->id);
 
         $cashOut->delete();
 
@@ -317,19 +270,22 @@ class TransactionController extends Controller
             $cashOutQuery->where('date', '<=', $eDate);
         }
 
-        $cashIns = $cashInQuery->get();
-        $cashOuts = $cashOutQuery->get();
-
         $modes = ['CASH', 'BANK', 'CHEQUE', 'MOBILE_BANKING'];
+
+        $cashInByModeRows = (clone $cashInQuery)->select('paymentMethod')
+            ->selectRaw('SUM(amountNumeric) as total')->groupBy('paymentMethod')->pluck('total', 'paymentMethod');
+        $cashOutByModeRows = (clone $cashOutQuery)->select('paymentMethod')
+            ->selectRaw('SUM(amountNumeric) as total')->groupBy('paymentMethod')->pluck('total', 'paymentMethod');
+
         $cashInByMode = [];
         $cashOutByMode = [];
         foreach ($modes as $mode) {
-            $cashInByMode[$mode] = (float) $cashIns->where('paymentMethod', $mode)->sum('amount');
-            $cashOutByMode[$mode] = (float) $cashOuts->where('paymentMethod', $mode)->sum('amount');
+            $cashInByMode[$mode] = (float) ($cashInByModeRows[$mode] ?? 0);
+            $cashOutByMode[$mode] = (float) ($cashOutByModeRows[$mode] ?? 0);
         }
 
-        $cashInTotal = (float) $cashIns->sum('amount');
-        $cashOutTotal = (float) $cashOuts->sum('amount');
+        $cashInTotal = (float) (clone $cashInQuery)->sum('amountNumeric');
+        $cashOutTotal = (float) (clone $cashOutQuery)->sum('amountNumeric');
 
         $summary = [
             'cashIn' => ['total' => $cashInTotal, 'byMode' => $cashInByMode],
@@ -337,22 +293,18 @@ class TransactionController extends Controller
             'net' => $cashInTotal - $cashOutTotal,
         ];
 
-        $config = $this->mainBalanceConfig();
-
-        // Main balance (configured % of all project budgets) always shows, regardless of filter.
+        // Global pool (combined paid-in across all projects) always shows, regardless of filter.
         $summary['mainBalance'] = [
-            'allocated' => $this->totalProjectBudget() * $config['percentage'],
+            'allocated' => $this->totalPaidAmount(),
             'available' => $this->availableBalance(null),
-            'percentage' => round($config['percentage'] * 100, 2),
         ];
 
         if ($projectId && $projectId !== 'GENERAL') {
             $project = Project::find($projectId);
             if ($project) {
                 $summary['projectBalance'] = [
-                    'allocated' => (float) $project->estimatedBudget * (1 - $config['percentage']),
-                    'available' => $this->availableBalance($projectId),
-                    'percentage' => round((1 - $config['percentage']) * 100, 2),
+                    'allocated' => $this->projectPaidAmount($projectId),
+                    'available' => $this->availableBalance($projectId, 'MATERIALS'),
                 ];
             }
         }
@@ -374,21 +326,19 @@ class TransactionController extends Controller
         $projectId = ($projectId === 'GENERAL' || !$projectId) ? null : $projectId;
         $category = $request->get('category');
 
-        $config = $this->mainBalanceConfig();
-        $drawsFromMain = !$projectId || $this->isMainBalanceCategory($category, $config);
+        $isProjectWise = $projectId && $this->isProjectWiseCategory($category);
 
-        $allocated = $drawsFromMain
-            ? $this->totalProjectBudget() * $config['percentage']
-            : (float) Project::findOrFail($projectId)->estimatedBudget * (1 - $config['percentage']);
+        $allocated = $isProjectWise
+            ? $this->projectPaidAmount($projectId)
+            : $this->totalPaidAmount();
 
         $available = $this->availableBalance($projectId, $category);
 
         return $this->apiSuccess([
-            'source' => $drawsFromMain ? 'main' : 'project',
+            'source' => $isProjectWise ? 'project' : 'main',
             'allocated' => $allocated,
             'available' => $available,
             'spent' => $allocated - $available,
-            'percentage' => round(($drawsFromMain ? $config['percentage'] : 1 - $config['percentage']) * 100, 2),
         ], 'Available balance retrieved', '/transactions/available-balance');
     }
 

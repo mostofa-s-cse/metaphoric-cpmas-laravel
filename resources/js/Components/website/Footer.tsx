@@ -14,9 +14,16 @@ const BRAND = {
   followers: '15.8K',
 };
 
+const FOOTER_CTA_DEFAULT = {
+  title: "Let's build your",
+  highlight: 'vision.',
+  description: 'Reach out to discuss your residential, commercial, or urban project in {city} and across Bangladesh.',
+};
+
 export default function Footer() {
   const [brand, setBrand] = useState(BRAND);
   const [services, setServices] = useState<any[]>([]);
+  const [cta, setCta] = useState(FOOTER_CTA_DEFAULT);
 
   useEffect(() => {
     fetch('/api/website/public')
@@ -28,6 +35,14 @@ export default function Footer() {
         if (json?.data?.services) {
           setServices(json.data.services);
         }
+        const footerCta = json?.data?.sections?.find((s: any) => s.sectionKey === 'FOOTER_CTA');
+        if (footerCta) {
+          setCta((prev) => ({
+            title: footerCta.title || prev.title,
+            highlight: footerCta.highlight || prev.highlight,
+            description: footerCta.description || prev.description,
+          }));
+        }
       })
       .catch(console.error);
   }, []);
@@ -38,11 +53,11 @@ export default function Footer() {
         <div className="flex flex-col lg:flex-row justify-between items-start mb-32 pb-20 gap-20">
           <div className="lg:w-1/2">
             <h2 className="text-5xl md:text-7xl font-playfair text-[#FDFBF7] leading-tight mb-8">
-              Let's build your <br />
-              <i className="text-[#D4AF37]">vision.</i>
+              {cta.title} <br />
+              <i className="text-[#D4AF37]">{cta.highlight}</i>
             </h2>
             <p className="text-[#A69F95] text-lg font-light mb-16 max-w-md leading-relaxed">
-              Reach out to discuss your residential, commercial, or urban project in {brand.city} and across Bangladesh.
+              {cta.description.replace('{city}', brand.city)}
             </p>
             <div className="space-y-10">
               <div>

@@ -28,7 +28,7 @@ class Supplier extends Model
 
     protected $casts = [
         'openingBalance' => EncryptedFloat::class,
-        'currentDue' => EncryptedFloat::class,
+        'currentDue' => EncryptedFloat::class . ':currentDueNumeric',
     ];
 
     public function materials()

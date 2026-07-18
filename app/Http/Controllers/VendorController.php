@@ -51,6 +51,24 @@ class VendorController extends Controller
             'Vendors retrieved successfully', self::PATH);
     }
 
+    /**
+     * Lightweight, unpaginated list of all vendors (id, name) for
+     * assignment dropdowns (e.g. Cash Out vendor payment picker).
+     */
+    public function list(Request $request)
+    {
+        $projectId = $request->get('projectId');
+
+        $query = Vendor::select('id', 'name')->orderBy('name');
+        if ($projectId) {
+            $query->whereHas('projectAssignments', function ($q) use ($projectId) {
+                $q->where('projectId', $projectId);
+            });
+        }
+
+        return $this->apiSuccess(['vendors' => $query->get()], 'Vendors list retrieved successfully', self::PATH);
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -60,41 +78,34 @@ class VendorController extends Controller
             'address' => 'nullable|string',
             'workType' => 'required|string',
             'contractAmount' => 'nullable|numeric',
-            'paidAmount' => 'nullable|numeric',
             'notes' => 'nullable|string',
             'assignments' => 'nullable|array',
             'assignments.*.projectId' => 'required_with:assignments|string',
             'assignments.*.contractAmount' => 'nullable|numeric',
-            'assignments.*.paidAmount' => 'nullable|numeric',
         ]);
 
         $assignments = $data['assignments'] ?? [];
         unset($data['assignments']);
 
-        if (!empty($assignments)) {
-            $contractAmount = collect($assignments)->sum(fn ($a) => (float) ($a['contractAmount'] ?? 0));
-            $paidAmount = collect($assignments)->sum(fn ($a) => (float) ($a['paidAmount'] ?? 0));
-        } else {
-            $contractAmount = (float) ($data['contractAmount'] ?? 0);
-            $paidAmount = (float) ($data['paidAmount'] ?? 0);
-        }
+        $contractAmount = !empty($assignments)
+            ? collect($assignments)->sum(fn ($a) => (float) ($a['contractAmount'] ?? 0))
+            : (float) ($data['contractAmount'] ?? 0);
 
         $data['contractAmount'] = $contractAmount;
-        $data['paidAmount'] = $paidAmount;
-        $data['dueAmount'] = $contractAmount - $paidAmount;
+        $data['paidAmount'] = 0;
+        $data['dueAmount'] = $contractAmount;
 
         $vendor = Vendor::create($data);
 
         foreach ($assignments as $assignment) {
             $aContract = (float) ($assignment['contractAmount'] ?? 0);
-            $aPaid = (float) ($assignment['paidAmount'] ?? 0);
 
             ProjectVendor::create([
                 'vendorId' => $vendor->id,
                 'projectId' => $assignment['projectId'],
                 'contractAmount' => $aContract,
-                'paidAmount' => $aPaid,
-                'dueAmount' => $aContract - $aPaid,
+                'paidAmount' => 0,
+                'dueAmount' => $aContract,
             ]);
         }
 
@@ -120,12 +131,10 @@ class VendorController extends Controller
             'address' => 'nullable|string',
             'workType' => 'sometimes|string',
             'contractAmount' => 'nullable|numeric',
-            'paidAmount' => 'nullable|numeric',
             'notes' => 'nullable|string',
             'assignments' => 'nullable|array',
             'assignments.*.projectId' => 'required_with:assignments|string',
             'assignments.*.contractAmount' => 'nullable|numeric',
-            'assignments.*.paidAmount' => 'nullable|numeric',
         ]);
 
         $hasAssignments = array_key_exists('assignments', $data);
@@ -133,37 +142,34 @@ class VendorController extends Controller
         unset($data['assignments']);
 
         if ($hasAssignments) {
-            ProjectVendor::where('vendorId', $id)->delete();
+            $existingByProject = ProjectVendor::where('vendorId', $id)->get()->keyBy('projectId');
+            $keepProjectIds = collect($assignments)->pluck('projectId')->all();
 
             foreach ($assignments as $assignment) {
                 $aContract = (float) ($assignment['contractAmount'] ?? 0);
-                $aPaid = (float) ($assignment['paidAmount'] ?? 0);
+                $existingPaid = (float) ($existingByProject->get($assignment['projectId'])?->paidAmount ?? 0);
 
-                ProjectVendor::create([
-                    'vendorId' => $id,
-                    'projectId' => $assignment['projectId'],
-                    'contractAmount' => $aContract,
-                    'paidAmount' => $aPaid,
-                    'dueAmount' => $aContract - $aPaid,
-                ]);
+                ProjectVendor::updateOrCreate(
+                    ['vendorId' => $id, 'projectId' => $assignment['projectId']],
+                    [
+                        'contractAmount' => $aContract,
+                        'paidAmount' => $existingPaid,
+                        'dueAmount' => $aContract - $existingPaid,
+                    ]
+                );
             }
+
+            ProjectVendor::where('vendorId', $id)->whereNotIn('projectId', $keepProjectIds)->delete();
         }
 
-        if (!empty($assignments)) {
-            $contractAmount = collect($assignments)->sum(fn ($a) => (float) ($a['contractAmount'] ?? 0));
-            $paidAmount = collect($assignments)->sum(fn ($a) => (float) ($a['paidAmount'] ?? 0));
-        } else {
-            $contractAmount = array_key_exists('contractAmount', $data)
+        $contractAmount = $hasAssignments && !empty($assignments)
+            ? collect($assignments)->sum(fn ($a) => (float) ($a['contractAmount'] ?? 0))
+            : (array_key_exists('contractAmount', $data)
                 ? (float) $data['contractAmount']
-                : (float) $vendor->contractAmount;
-            $paidAmount = array_key_exists('paidAmount', $data)
-                ? (float) $data['paidAmount']
-                : (float) $vendor->paidAmount;
-        }
+                : (float) $vendor->contractAmount);
 
         $data['contractAmount'] = $contractAmount;
-        $data['paidAmount'] = $paidAmount;
-        $data['dueAmount'] = $contractAmount - $paidAmount;
+        $data['dueAmount'] = $contractAmount - (float) $vendor->paidAmount;
 
         $vendor->update($data);
 

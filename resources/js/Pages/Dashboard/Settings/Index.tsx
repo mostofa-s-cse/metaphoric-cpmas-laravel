@@ -27,7 +27,6 @@ import {
   Info,
   CheckCircle2,
   Camera,
-  Wallet,
 } from 'lucide-react';
 
 // ─── Zod Schemas ──────────────────────────────────────────────────────────────
@@ -78,30 +77,6 @@ interface SmtpSettings {
   notificationEmail: string;
 }
 
-interface MainBalanceSettings {
-  percentage: string;
-  categories: string[];
-}
-
-// Must match TransactionController::CASH_OUT_CATEGORIES.
-const EXPENSE_CATEGORIES: { value: string; label: string }[] = [
-  { value: 'SIGNING_AGREEMENT', label: 'Signing Agreement' },
-  { value: 'MATERIAL_PREPS', label: 'Material Purpose' },
-  { value: 'LABER_PREPS', label: 'Labor Purpose' },
-  { value: 'RUNNING_BILL', label: 'Running Bill' },
-  { value: 'FINAL_BILL', label: 'Final Bill' },
-  { value: 'MATERIALS', label: 'Raw Materials Purchase' },
-  { value: 'LABOR', label: 'Site Labor Daily Wages' },
-  { value: 'VENDOR_PAYMENT', label: 'Vendor Payment Milestone' },
-  { value: 'EMPLOYEE_SALARY', label: 'Employee Salary' },
-  { value: 'OFFICE_RENT', label: 'Office Rent' },
-  { value: 'UTILITIES', label: 'Electricity & Internet Utilities' },
-  { value: 'TRANSPORTATION', label: 'Transportation' },
-  { value: 'FUEL', label: 'Fuel' },
-  { value: 'EQUIPMENT_RENTAL', label: 'Heavy Crane/Equipment Rental' },
-  { value: 'MISCELLANEOUS', label: 'Miscellaneous / Petty Cash' },
-];
-
 export default function SettingsPage() {
   const { auth } = usePage().props as any;
   const authUser = auth?.user;
@@ -115,7 +90,7 @@ export default function SettingsPage() {
     setCurrentUser(authUser);
   }, [authUser]);
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'smtp' | 'balance' | 'about'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'smtp' | 'about'>('profile');
   const [showPassword, setShowPassword] = useState(false);
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
 
@@ -141,11 +116,6 @@ export default function SettingsPage() {
     notificationEmail: '',
   });
 
-  const [mainBalanceForm, setMainBalanceForm] = useState<MainBalanceSettings>({
-    percentage: '30',
-    categories: [],
-  });
-
   useEffect(() => {
     if (!isAdmin) return;
 
@@ -167,13 +137,6 @@ export default function SettingsPage() {
             notificationEmail: s.notificationEmail || '',
           });
         }
-        if (res.data.status === 'success' && res.data.data?.MAIN_BALANCE_CONFIG) {
-          const m = res.data.data.MAIN_BALANCE_CONFIG;
-          setMainBalanceForm({
-            percentage: String(m.percentage ?? '30'),
-            categories: Array.isArray(m.categories) ? m.categories : [],
-          });
-        }
       })
       .finally(() => {
         if (!cancelled) setIsLoadingSettings(false);
@@ -192,39 +155,6 @@ export default function SettingsPage() {
         successMessage: 'SMTP settings updated successfully.',
         errorMessage: 'Failed to update SMTP settings.',
       });
-    } catch {
-      // handled by toast
-    } finally {
-      setIsUpdatingSetting(false);
-    }
-  };
-
-  const toggleMainBalanceCategory = (value: string) => {
-    setMainBalanceForm((prev) => ({
-      ...prev,
-      categories: prev.categories.includes(value)
-        ? prev.categories.filter((c) => c !== value)
-        : [...prev.categories, value],
-    }));
-  };
-
-  const onMainBalanceSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsUpdatingSetting(true);
-    try {
-      await handlePromise(
-        axios.post('/api/website/settings', {
-          key: 'MAIN_BALANCE_CONFIG',
-          value: {
-            percentage: parseFloat(mainBalanceForm.percentage) || 0,
-            categories: mainBalanceForm.categories,
-          },
-        }),
-        {
-          successMessage: 'Main Balance configuration updated successfully.',
-          errorMessage: 'Failed to update Main Balance configuration.',
-        }
-      );
     } catch {
       // handled by toast
     } finally {
@@ -414,7 +344,6 @@ export default function SettingsPage() {
                 { id: 'profile' as const, label: 'Profile', icon: User },
                 { id: 'security' as const, label: 'Security', icon: Key },
                 ...(isAdmin ? [{ id: 'smtp' as const, label: 'Email SMTP Config', icon: Settings }] : []),
-                ...(isAdmin ? [{ id: 'balance' as const, label: 'Main Balance', icon: Wallet }] : []),
                 { id: 'about' as const, label: 'System Info', icon: Info },
               ].map((tab) => {
                 const TabIcon = tab.icon;
@@ -678,75 +607,6 @@ export default function SettingsPage() {
                       >
                         {isUpdatingSetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                         Save SMTP Config
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            )}
-
-            {/* Main Balance Config Tab */}
-            {activeTab === 'balance' && isAdmin && (
-              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
-                <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2 mb-2">
-                  <Wallet className="h-4 w-4 text-amber-400" />
-                  Main Balance Configuration
-                </h2>
-                <p className="text-slate-400 text-xs mb-6">
-                  Every project reserves this percentage of its budget into the shared Main Balance.
-                  Expenses with no linked project always draw from Main Balance; expenses tagged with
-                  a category selected below draw from Main Balance too, even if a project is linked.
-                </p>
-
-                {isLoadingSettings ? (
-                  <div className="flex justify-center p-10"><Loader2 className="animate-spin text-cyan-500 w-8 h-8" /></div>
-                ) : (
-                  <form onSubmit={onMainBalanceSubmit} className="space-y-5">
-                    <div className="max-w-xs">
-                      <label className="block text-slate-400 text-xs font-semibold mb-2">Main Balance Percentage (%)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step="0.01"
-                        value={mainBalanceForm.percentage}
-                        onChange={(e) => setMainBalanceForm({ ...mainBalanceForm, percentage: e.target.value })}
-                        placeholder="e.g. 30"
-                        className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 text-sm"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-400 text-xs font-semibold mb-2">
-                        Expense Categories That Always Deduct From Main Balance
-                      </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 p-3 bg-slate-950/40 border border-slate-800 rounded-xl">
-                        {EXPENSE_CATEGORIES.map((cat) => (
-                          <label
-                            key={cat.value}
-                            className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={mainBalanceForm.categories.includes(cat.value)}
-                              onChange={() => toggleMainBalanceCategory(cat.value)}
-                              className="h-4 w-4 rounded border-slate-800 bg-slate-950 text-cyan-500 focus:ring-cyan-500/30 focus:ring-opacity-25"
-                            />
-                            {cat.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="pt-2 flex justify-end">
-                      <button
-                        type="submit"
-                        disabled={isUpdatingSetting}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 text-xs font-bold rounded-xl shadow-lg hover:shadow-cyan-500/10 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60"
-                      >
-                        {isUpdatingSetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                        Save Main Balance Config
                       </button>
                     </div>
                   </form>
