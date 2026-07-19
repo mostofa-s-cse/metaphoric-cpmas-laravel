@@ -143,32 +143,39 @@ class TransactionController extends Controller
     public function storeCashOut(Request $request)
     {
         $data = $request->validate([
-            'date' => 'required|date',
-            'projectId' => 'nullable|uuid|exists:projects,id',
+            'date'            => 'required|date',
+            'projectId'       => 'nullable|uuid|exists:projects,id',
             'expenseCategory' => 'required|string|in:' . self::CASH_OUT_CATEGORIES,
-            'paidTo' => 'required|string',
-            'amount' => 'required|numeric|min:0',
-            'paymentMethod' => 'required|string|in:CASH,BANK,CHEQUE,MOBILE_BANKING',
+            'paidTo'          => 'required|string',
+            'amount'          => 'required|numeric|min:0',
+            'paymentMethod'   => 'required|string|in:CASH,BANK,CHEQUE,MOBILE_BANKING',
             'referenceNumber' => 'nullable|string',
-            'notes' => 'nullable|string',
-            'supplierId' => 'nullable|uuid|exists:suppliers,id',
-            'vendorId' => 'nullable|uuid|exists:vendors,id',
-            'employeeId' => 'nullable|uuid|exists:employees,id',
-            'labourId' => 'nullable|uuid|exists:labours,id',
-            'materialId' => 'nullable|uuid|exists:materials,id',
-            'salaryId' => 'nullable|uuid|exists:salaries,id',
+            'notes'           => 'nullable|string',
+            'supplierId'      => 'nullable|uuid|exists:suppliers,id',
+            'vendorId'        => 'nullable|uuid|exists:vendors,id',
+            'employeeId'      => 'nullable|uuid|exists:employees,id',
+            'labourId'        => 'nullable|uuid|exists:labours,id',
+            'materialId'      => 'nullable|uuid|exists:materials,id',
+            'salaryId'        => 'nullable|uuid|exists:salaries,id',
         ]);
 
-        $amount = (float) $data['amount'];
-        $vendorId = $data['vendorId'] ?? null;
+        $amount    = (float) $data['amount'];
+        $vendorId  = $data['vendorId'] ?? null;
         $supplierId = $data['supplierId'] ?? null;
-        $projectId = $data['projectId'] ?? null;
-        $category = $data['expenseCategory'];
+        $projectId  = $data['projectId'] ?? null;
+        $category   = $data['expenseCategory'];
 
-        $available = $this->availableBalance($projectId, $category);
+        // RULE: Office / overhead expenses NEVER draw from a project's own pool.
+        // They always go to the global company pool. The projectId tag is still
+        // stored on the row (for reporting / reference) but the balance check
+        // and the snapshot deduction both use null (= global pool).
+        $isOfficeExpense = \App\Models\ExpenseCategory::isOfficeExpense($category);
+        $balanceProjectId = $isOfficeExpense ? null : $projectId;
+
+        $available = $this->availableBalance($balanceProjectId, $category);
         if ($amount > $available) {
             return $this->apiBadRequest(
-                $this->insufficientBalanceMessage($available, $projectId, $category),
+                $this->insufficientBalanceMessage($available, $balanceProjectId, $category),
                 self::PATH_OUT
             );
         }
@@ -187,24 +194,29 @@ class TransactionController extends Controller
         $cashOut = CashOut::findOrFail($id);
 
         $data = $request->validate([
-            'date' => 'sometimes|date',
-            'projectId' => 'nullable|uuid|exists:projects,id',
+            'date'            => 'sometimes|date',
+            'projectId'       => 'nullable|uuid|exists:projects,id',
             'expenseCategory' => 'sometimes|string|in:' . self::CASH_OUT_CATEGORIES,
-            'paidTo' => 'sometimes|string',
-            'amount' => 'sometimes|numeric|min:0',
-            'paymentMethod' => 'sometimes|string|in:CASH,BANK,CHEQUE,MOBILE_BANKING',
+            'paidTo'          => 'sometimes|string',
+            'amount'          => 'sometimes|numeric|min:0',
+            'paymentMethod'   => 'sometimes|string|in:CASH,BANK,CHEQUE,MOBILE_BANKING',
             'referenceNumber' => 'nullable|string',
-            'notes' => 'nullable|string',
+            'notes'           => 'nullable|string',
         ]);
 
-        $newAmount = isset($data['amount']) ? (float) $data['amount'] : (float) $cashOut->amount;
+        $newAmount    = isset($data['amount']) ? (float) $data['amount'] : (float) $cashOut->amount;
         $newProjectId = array_key_exists('projectId', $data) ? $data['projectId'] : $cashOut->projectId;
-        $newCategory = $data['expenseCategory'] ?? $cashOut->expenseCategory;
+        $newCategory  = $data['expenseCategory'] ?? $cashOut->expenseCategory;
 
-        $available = $this->availableBalance($newProjectId, $newCategory, $cashOut->id);
+        // RULE: Office expenses always draw from global pool — the projectId tag
+        // may remain on the row for reference, but the balance check must use null.
+        $isOfficeExpense  = \App\Models\ExpenseCategory::isOfficeExpense($newCategory);
+        $balanceProjectId = $isOfficeExpense ? null : $newProjectId;
+
+        $available = $this->availableBalance($balanceProjectId, $newCategory, $cashOut->id);
         if ($newAmount > $available) {
             return $this->apiBadRequest(
-                $this->insufficientBalanceMessage($available, $newProjectId, $newCategory),
+                $this->insufficientBalanceMessage($available, $balanceProjectId, $newCategory),
                 self::PATH_OUT
             );
         }

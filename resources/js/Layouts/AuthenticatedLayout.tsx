@@ -22,6 +22,7 @@ import {
   Settings,
   ExternalLink,
   ChevronDown,
+  Landmark,
 } from 'lucide-react';
 
 interface NavItem {
@@ -42,6 +43,7 @@ const navItems: NavItem[] = [
   { name: 'Labour Management', href: '/dashboard/labour',      routeName: 'dashboard.labour',    icon: HardHat,         roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
   { name: 'Materials',         href: '/dashboard/materials',   routeName: 'dashboard.materials', icon: PackageSearch,   roles: ['SUPER_ADMIN', 'ADMIN', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
   { name: 'Transactions',      href: '/dashboard/transactions',routeName: 'dashboard.transactions', icon: ArrowUpDown,  roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
+  { name: 'Bank Accounts',     href: '/dashboard/bank-accounts',routeName: 'dashboard.bank-accounts', icon: Landmark,   roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'] },
   { name: 'Documents',         href: '/dashboard/documents',   routeName: 'dashboard.documents', icon: FileText,       roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
   {
     name: 'Reports', href: '/dashboard/reports', routeName: 'dashboard.reports', icon: TrendingUp, roles: ['SUPER_ADMIN'],

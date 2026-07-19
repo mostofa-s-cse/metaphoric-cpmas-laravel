@@ -48,6 +48,12 @@ class SupplierController extends Controller
             ->with(['projectAssignments.project:id,name,code', 'materials:id,supplierId,totalPrice'])
             ->get();
 
+        $suppliers->each(function (Supplier $supplier) {
+            $supplier->setAttribute('contractAmount', $supplier->projectAssignments->sum('contractAmount'));
+            $supplier->setAttribute('paidAmount', $supplier->projectAssignments->sum('paidAmount'));
+            $supplier->setAttribute('dueAmount', $supplier->projectAssignments->sum('dueAmount'));
+        });
+
         return $this->apiPaginated('suppliers', $suppliers, $total, $page, $limit,
             'Suppliers retrieved successfully', self::PATH);
     }

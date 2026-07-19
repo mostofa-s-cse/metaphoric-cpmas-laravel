@@ -114,6 +114,38 @@ export default function ProjectsPage() {
   // Details drawer state
   const [selectedProject, setSelectedProject] = useState<ApiProject | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<'overview' | 'ledger'>('overview');
+
+  // Project ledger state
+  const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
+  const [ledgerSummary, setLedgerSummary] = useState<any>(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  const fetchLedger = async (projectId: string) => {
+    setLedgerLoading(true);
+    try {
+      const [entriesRes, summaryRes] = await Promise.all([
+        axios.get(`/api/projects/${projectId}/ledger`, { params: { limit: 50 } }),
+        axios.get(`/api/projects/${projectId}/ledger/summary`)
+      ]);
+      if (entriesRes.data.status === 'success') {
+        setLedgerEntries(entriesRes.data.data.ledgerEntries || []);
+      }
+      if (summaryRes.data.status === 'success') {
+        setLedgerSummary(summaryRes.data.data);
+      }
+    } catch (err) {
+      // ignore
+    } finally {
+      setLedgerLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedProject?.id && drawerTab === 'ledger') {
+      fetchLedger(selectedProject.id);
+    }
+  }, [selectedProject?.id, drawerTab]);
 
   // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -244,6 +276,7 @@ export default function ProjectsPage() {
   const handleProjectClick = async (project: ApiProject) => {
     setSelectedProject(project);
     setIsDetailsOpen(true);
+    setDrawerTab('overview');
     // Fetch deep relations if not present
     try {
       const res = await axios.get(`/api/projects/${project.id}`);
@@ -549,9 +582,34 @@ export default function ProjectsPage() {
             onClose={() => setIsDetailsOpen(false)}
             title={<span className="line-clamp-1">{selectedProject.name}</span>}
             description={`Project Code: ${selectedProject.code}`}
-            size="md"
+            size="lg"
           >
-            <div className="space-y-6">
+            {/* Tabs */}
+            <div className="flex border-b border-slate-800 shrink-0 mb-6">
+              <button
+                onClick={() => setDrawerTab('overview')}
+                className={`flex-1 py-2 text-xs font-semibold text-center uppercase tracking-wider transition-colors border-b-2 ${
+                  drawerTab === 'overview'
+                    ? 'border-cyan-500 text-cyan-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                Overview
+              </button>
+              <button
+                onClick={() => setDrawerTab('ledger')}
+                className={`flex-1 py-2 text-xs font-semibold text-center uppercase tracking-wider transition-colors border-b-2 ${
+                  drawerTab === 'ledger'
+                    ? 'border-cyan-500 text-cyan-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                Ledger / Statement
+              </button>
+            </div>
+
+            {drawerTab === 'overview' ? (
+              <div className="space-y-6">
                 {/* Project Stats Summary Widgets */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-xl">
@@ -756,6 +814,93 @@ export default function ProjectsPage() {
                   </p>
                 </div>
               </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Ledger Summary Cards */}
+                {ledgerSummary && (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-xl">
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Total Received</p>
+                      <p className="text-sm font-bold text-emerald-400 mt-1">{formatCurrencyLocal(ledgerSummary.totalIn)}</p>
+                    </div>
+                    <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-xl">
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Total Spent</p>
+                      <p className="text-sm font-bold text-rose-400 mt-1">{formatCurrencyLocal(ledgerSummary.totalOut)}</p>
+                    </div>
+                    <div className="p-3 bg-slate-950/40 border border-slate-800 rounded-xl">
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Net Balance</p>
+                      <p className={`text-sm font-bold mt-1 ${ledgerSummary.netBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {formatCurrencyLocal(ledgerSummary.netBalance)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Ledger Table */}
+                {ledgerLoading ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin text-cyan-400 mb-2" />
+                    <p className="text-slate-500 text-[10px]">Loading statement data...</p>
+                  </div>
+                ) : ledgerEntries.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500 text-xs">
+                    No transactions found for this project.
+                  </div>
+                ) : (
+                  <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/20">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-[11px]">
+                        <thead>
+                          <tr className="border-b border-slate-800 bg-slate-900/50 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                            <th className="py-2.5 px-3">Date</th>
+                            <th className="py-2.5 px-3">Type / Category</th>
+                            <th className="py-2.5 px-3">Description</th>
+                            <th className="py-2.5 px-3 text-right">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                          {ledgerEntries.map((entry) => {
+                            const isCashIn = entry.entryType === 'CASH_IN';
+                            return (
+                              <tr key={entry.id} className="hover:bg-slate-900/20">
+                                <td className="py-2.5 px-3 text-slate-500 font-mono">
+                                  {new Date(entry.date).toLocaleDateString(undefined, {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wide uppercase mr-1.5 ${
+                                    isCashIn ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                  }`}>
+                                    {isCashIn ? 'IN' : 'OUT'}
+                                  </span>
+                                  <span className="font-semibold text-slate-200">
+                                    {entry.expenseCategory ? entry.expenseCategory.replace('_', ' ') : 'Client Receipt'}
+                                  </span>
+                                  {entry.paymentMethod && (
+                                    <span className="block text-[8px] text-slate-500 uppercase font-mono mt-0.5">
+                                      via {entry.paymentMethod} {entry.bankOrCashAccount ? `(${entry.bankOrCashAccount})` : ''}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 truncate max-w-[120px] text-slate-400" title={entry.description}>
+                                  {entry.description || '-'}
+                                </td>
+                                <td className={`py-2.5 px-3 text-right font-bold font-mono ${isCashIn ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {isCashIn ? '+' : '-'}{formatCurrencyLocal(parseFloat(entry.amount))}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </Drawer>
         )}
 

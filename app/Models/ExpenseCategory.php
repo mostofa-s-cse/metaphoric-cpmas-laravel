@@ -27,8 +27,14 @@ class ExpenseCategory extends Model
 
     protected static function booted()
     {
-        static::saved(fn () => Cache::forget('expense_categories:pool_map'));
-        static::deleted(fn () => Cache::forget('expense_categories:pool_map'));
+        static::saved(function () {
+            Cache::forget('expense_categories:pool_map');
+            Cache::forget('expense_categories:office_map');
+        });
+        static::deleted(function () {
+            Cache::forget('expense_categories:pool_map');
+            Cache::forget('expense_categories:office_map');
+        });
     }
 
     /**
@@ -48,5 +54,38 @@ class ExpenseCategory extends Model
         });
 
         return ($poolByCode[$code] ?? self::POOL_GLOBAL) === self::POOL_PROJECT_WISE;
+    }
+
+    /**
+     * Returns true for office / overhead categories (OFFICE_RENT, UTILITIES,
+     * TRANSPORTATION, FUEL, EQUIPMENT_RENTAL, EMPLOYEE_SALARY, MISCELLANEOUS,
+     * LABOR).
+     *
+     * These categories MUST NEVER draw from a project's own balance pool.
+     * The projectId tag may still be stored on the CashOut row for reporting
+     * purposes, but the balance check and snapshot deduction always use the
+     * global company pool.
+     */
+    public static function isOfficeExpense(?string $code): bool
+    {
+        if (!$code) {
+            return false;
+        }
+
+        // Check if the column exists (graceful degradation before migration runs)
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('expense_categories', 'isOfficeExpense')) {
+            // Fallback to a hardcoded list matching the migration seed
+            $officeCategories = [
+                'OFFICE_RENT', 'UTILITIES', 'TRANSPORTATION', 'FUEL',
+                'EQUIPMENT_RENTAL', 'EMPLOYEE_SALARY', 'MISCELLANEOUS', 'LABOR',
+            ];
+            return in_array($code, $officeCategories, true);
+        }
+
+        $officeMap = Cache::rememberForever('expense_categories:office_map', function () {
+            return static::query()->pluck('isOfficeExpense', 'code')->all();
+        });
+
+        return (bool) ($officeMap[$code] ?? false);
     }
 }

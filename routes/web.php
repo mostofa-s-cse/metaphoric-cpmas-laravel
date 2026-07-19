@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\LabourController;
 use App\Http\Controllers\MaterialController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ProjectLedgerController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SupplierController;
@@ -76,6 +78,7 @@ Route::middleware(['auth'])->prefix('dashboard')->group(function () {
     Route::get('/labour', [LabourController::class, 'page'])->name('dashboard.labour');
     Route::get('/materials', [MaterialController::class, 'page'])->name('dashboard.materials');
     Route::get('/transactions', [TransactionController::class, 'page'])->name('dashboard.transactions');
+    Route::get('/bank-accounts', [BankAccountController::class, 'page'])->name('dashboard.bank-accounts');
     Route::get('/documents', [DocumentController::class, 'page'])->name('dashboard.documents');
     Route::get('/audit-logs', [AuditLogController::class, 'page'])->name('dashboard.audit-logs');
     Route::get('/settings', [SettingsController::class, 'page'])->name('dashboard.settings');
@@ -189,6 +192,26 @@ Route::middleware(['auth'])->prefix('api')->group(function () {
     Route::post('/transactions/cash-out', [TransactionController::class, 'storeCashOut']);
     Route::patch('/transactions/cash-out/{id}', [TransactionController::class, 'updateCashOut']);
     Route::delete('/transactions/cash-out/{id}', [TransactionController::class, 'destroyCashOut']);
+
+    // Bank Accounts (manually-maintained balances)
+    Route::get('/bank-accounts', [BankAccountController::class, 'index']);
+    Route::post('/bank-accounts', [BankAccountController::class, 'store']);
+    Route::patch('/bank-accounts/{id}', [BankAccountController::class, 'update']);
+    Route::post('/bank-accounts/{id}/adjust', [BankAccountController::class, 'adjust']);
+    Route::post('/bank-accounts/{id}/reconcile', [BankAccountController::class, 'reconcile']);
+    Route::delete('/bank-accounts/{id}', [BankAccountController::class, 'destroy']);
+
+    // Project Ledger (per-project statement of account)
+    Route::get('/projects/{projectId}/ledger', [ProjectLedgerController::class, 'index']);
+    Route::get('/projects/{projectId}/ledger/summary', [ProjectLedgerController::class, 'summary']);
+
+    // Expense Categories (read for UI dropdowns)
+    Route::get('/expense-categories', function () {
+        return response()->json([
+            'status' => 'success',
+            'data'   => ['categories' => \App\Models\ExpenseCategory::orderBy('poolType')->orderBy('label')->get()],
+        ]);
+    });
 
     // Documents
     Route::get('/documents', [DocumentController::class, 'index']);

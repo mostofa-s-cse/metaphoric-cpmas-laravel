@@ -7,6 +7,7 @@ use App\Traits\BustsDashboardCache;
 use App\Casts\EncryptedFloat;
 use App\Models\ExpenseCategory;
 use App\Services\BalanceSnapshotService;
+use App\Services\BankAccountService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -19,11 +20,43 @@ class CashOut extends Model
     // as running totals, mirroring HasMainBalance::availableBalance()'s bucket
     // rule exactly: project-wise category + a projectId -> project bucket,
     // everything else -> the global/company bucket.
+    //
+    // NEW: Also writes a project ledger entry for every project-tagged CashOut,
+    // and adjusts the relevant bank/cash account's running balance.
+    //
+    // RULE: Office expenses (isOfficeExpense = true) ALWAYS go to the global
+    // pool and NEVER deduct from a project's own balance, even if projectId
+    // is set on the row (it is still recorded in the project ledger for
+    // reference, but the spending bucket is always GLOBAL).
     protected static function booted()
     {
         static::created(function (CashOut $cashOut) {
+            // ── Running balance snapshot ───────────────────────────────────
             app(BalanceSnapshotService::class)->applyCashOutDelta(
                 $cashOut->projectId, $cashOut->expenseCategory, (float) $cashOut->amountNumeric
+            );
+
+            // ── Project ledger entry ───────────────────────────────────────
+            if ($cashOut->projectId) {
+                ProjectLedgerEntry::create([
+                    'projectId'         => $cashOut->projectId,
+                    'entryType'         => 'CASH_OUT',
+                    'referenceId'       => $cashOut->id,
+                    'referenceType'     => self::class,
+                    'date'              => $cashOut->date,
+                    'amount'            => (float) $cashOut->amountNumeric,
+                    'description'       => $cashOut->paidTo,
+                    'expenseCategory'   => $cashOut->expenseCategory,
+                    'paymentMethod'     => $cashOut->paymentMethod,
+                    'bankOrCashAccount' => null, // CashOut does not store bankOrCash field currently
+                ]);
+            }
+
+            // ── Bank account balance ───────────────────────────────────────
+            app(BankAccountService::class)->applyDebit(
+                null, // CashOut has no bankOrCash field — BankAccountService handles null
+                $cashOut->paymentMethod,
+                (float) $cashOut->amountNumeric
             );
         });
 
@@ -37,12 +70,49 @@ class CashOut extends Model
             $service->applyCashOutDelta(
                 $cashOut->projectId, $cashOut->expenseCategory, (float) $cashOut->amountNumeric
             );
+
+            // ── Bank account balance ───────────────────────────────────────
+            $oldMethod = $cashOut->getOriginal('paymentMethod');
+            $newAmount = (float) $cashOut->amountNumeric;
+            $bankService = app(BankAccountService::class);
+            $bankService->reverseDebit(null, $oldMethod, $oldAmount);
+            $bankService->applyDebit(null, $cashOut->paymentMethod, $newAmount);
+
+            // ── Project ledger entry ───────────────────────────────────────
+            ProjectLedgerEntry::where('referenceId', $cashOut->id)
+                ->where('referenceType', self::class)
+                ->delete();
+
+            if ($cashOut->projectId) {
+                ProjectLedgerEntry::create([
+                    'projectId'         => $cashOut->projectId,
+                    'entryType'         => 'CASH_OUT',
+                    'referenceId'       => $cashOut->id,
+                    'referenceType'     => self::class,
+                    'date'              => $cashOut->date,
+                    'amount'            => $newAmount,
+                    'description'       => $cashOut->paidTo,
+                    'expenseCategory'   => $cashOut->expenseCategory,
+                    'paymentMethod'     => $cashOut->paymentMethod,
+                    'bankOrCashAccount' => null,
+                ]);
+            }
         });
 
         static::deleted(function (CashOut $cashOut) {
+            $amount = (float) $cashOut->amountNumeric;
+
             app(BalanceSnapshotService::class)->applyCashOutDelta(
-                $cashOut->projectId, $cashOut->expenseCategory, -(float) $cashOut->amountNumeric
+                $cashOut->projectId, $cashOut->expenseCategory, -$amount
             );
+
+            // ── Bank account balance ───────────────────────────────────────
+            app(BankAccountService::class)->reverseDebit(null, $cashOut->paymentMethod, $amount);
+
+            // ── Project ledger entry ───────────────────────────────────────
+            ProjectLedgerEntry::where('referenceId', $cashOut->id)
+                ->where('referenceType', self::class)
+                ->delete();
         });
     }
 
@@ -67,7 +137,7 @@ class CashOut extends Model
     ];
 
     protected $casts = [
-        'date' => 'datetime',
+        'date'   => 'datetime',
         'amount' => EncryptedFloat::class . ':amountNumeric',
     ];
 

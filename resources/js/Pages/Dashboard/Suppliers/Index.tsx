@@ -49,6 +49,9 @@ interface ApiSupplier {
   openingBalance: number;
   notes?: string;
   currentDue: number;
+  contractAmount: number;
+  paidAmount: number;
+  dueAmount: number;
   materials?: any[];
   cashOuts?: any[];
   projectAssignments?: any[];
@@ -332,8 +335,9 @@ export default function SuppliersPage() {
                     <th className="py-5 px-6">Supplier</th>
                     <th className="py-5 px-6">Projects Assigned</th>
                     <th className="py-5 px-6">Contact</th>
-                    <th className="py-5 px-6 text-right">Total Purchases</th>
-                    <th className="py-5 px-6 text-right">Outstanding Due</th>
+                    <th className="py-5 px-6 text-right">Total Contract</th>
+                    <th className="py-5 px-6 text-right">Total Paid</th>
+                    <th className="py-5 px-6 text-right">Total Due</th>
                     {user && user.role !== 'PROJECT_MANAGER' && <th className="py-5 px-6 text-right">Actions</th>}
                   </tr>
                 </thead>
@@ -386,11 +390,14 @@ export default function SuppliersPage() {
                         )}
                       </td>
                       <td className="py-5 px-6 text-right font-bold text-slate-200">
-                        {(sup.materials || []).length} Invoice(s)
+                        {formatCurrencyLocal(sup.contractAmount)}
+                      </td>
+                      <td className="py-5 px-6 text-right font-bold text-emerald-400">
+                        {formatCurrencyLocal(sup.paidAmount)}
                       </td>
                       <td className="py-5 px-6 text-right">
-                        <span className={`font-bold ${sup.currentDue > 0 ? 'text-amber-400' : 'text-slate-450'}`}>
-                          {formatCurrencyLocal(sup.currentDue)}
+                        <span className={`font-bold ${sup.dueAmount > 0 ? 'text-amber-400' : 'text-slate-450'}`}>
+                          {formatCurrencyLocal(sup.dueAmount)}
                         </span>
                       </td>
                       {user && user.role !== 'PROJECT_MANAGER' && (
