@@ -340,11 +340,10 @@ export default function LaboursPage() {
 
   // Which pool (Main Balance or the selected project's own share) a
   // prospective wage payment will draw from, and how much is available —
-  // fetched live from the backend so it matches the admin-configured
-  // percentage/category rules in Settings > Main Balance, and the exact
-  // amount storeCashOut will enforce on submit.
+  // fetched live from the backend so it matches the exact amount
+  // storeCashOut will enforce on submit.
   const [balanceInfo, setBalanceInfo] = useState<{
-    source: 'main' | 'project'; allocated: number; available: number; spent: number; percentage: number;
+    source: 'main' | 'project'; allocated: number; available: number; spent: number;
   } | null>(null);
 
   const fetchAvailableBalance = async (projectId: string | null, category: string) => {
@@ -371,8 +370,8 @@ export default function LaboursPage() {
       return <div className="mt-2 text-[10px] text-slate-600">Loading balance...</div>;
     }
     const label = info.source === 'main'
-      ? `Main Balance (All Projects, ${info.percentage}%)`
-      : `Project Balance (${info.percentage}% of budget)`;
+      ? 'Main Balance (All Projects)'
+      : 'Project Balance';
     return (
       <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[10px]">
         <div className="p-1.5 bg-slate-950/40 border border-slate-800 rounded-lg">
@@ -394,7 +393,8 @@ export default function LaboursPage() {
   };
 
   const formatCurrencyLocal = (amount: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+    const sign = amount < 0 ? '-' : '';
+    return `${sign}৳ ${Math.abs(amount).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   return (

@@ -20,9 +20,10 @@ import { useResourceList } from '@/hooks/useResourceList';
 import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
-  Users2, Plus, Search, Building, DollarSign, X, Loader2, UserPlus, CreditCard, Trash2, Edit2,
+  Users2, Plus, Search, Building, X, Loader2, UserPlus, CreditCard, Trash2, Edit2,
   History, Wallet, Receipt,
 } from 'lucide-react';
+import { TakaIcon } from '@/Components/ui/TakaIcon';
 
 function monthsBetween(startMonth: string, endMonth: string): string[] {
   const months: string[] = [];
@@ -65,6 +66,14 @@ interface ApiEmployee {
   monthlySalary: number;
   employmentStatus: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   salaries?: any[];
+}
+
+interface ApiBankAccount {
+  id: string;
+  name: string;
+  accountType: 'BANK' | 'CASH' | 'MOBILE_BANKING';
+  currentBalance: number;
+  isActive: boolean;
 }
 
 // Expense categories treated as general "office" overhead — these (plus
@@ -141,7 +150,7 @@ export default function EmployeesPage() {
     bonus: '0',
     deduction: '0',
     paidAmount: '',
-    paymentMethod: 'BANK',
+    bankAccountId: '',
     referenceNumber: '',
     notes: '',
   });
@@ -152,10 +161,32 @@ export default function EmployeesPage() {
     expenseCategory: 'OFFICE_RENT',
     paidTo: '',
     amount: '',
-    paymentMethod: 'BANK',
+    bankAccountId: '',
     referenceNumber: '',
     notes: '',
   });
+
+  // Bank accounts — every office expense / salary disbursement draws from a
+  // specific account here (replaces the old company-wide "Main Balance" pool
+  // check for these two forms), so the dropdown and the balance-remaining
+  // preview both read straight from this list.
+  const [bankAccounts, setBankAccounts] = useState<ApiBankAccount[]>([]);
+  const activeBankAccounts = bankAccounts.filter((a) => a.isActive);
+
+  const fetchBankAccounts = async () => {
+    try {
+      const res = await axios.get('/api/bank-accounts');
+      if (res.data.status === 'success') {
+        setBankAccounts(res.data.data.accounts || []);
+      }
+    } catch (err) {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    fetchBankAccounts();
+  }, []);
 
   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
   const [isProcessingSalary, setIsProcessingSalary] = useState(false);
@@ -279,11 +310,11 @@ export default function EmployeesPage() {
       bonus: '0',
       deduction: '0',
       paidAmount: emp.monthlySalary.toString(),
-      paymentMethod: 'BANK',
+      bankAccountId: activeBankAccounts[0]?.id || '',
       referenceNumber: '',
       notes: '',
     });
-    fetchAvailableBalance('EMPLOYEE_SALARY');
+    fetchBankAccounts();
     setIsSalaryModalOpen(true);
   };
 
@@ -292,34 +323,6 @@ export default function EmployeesPage() {
     fetchSalaryHistory(emp.id);
     setIsSalaryHistoryOpen(true);
   };
-
-  // Which pool (Main Balance or the selected project's own share) a
-  // prospective payment will draw from, and how much is available — fetched
-  // live from the backend so it always matches the admin-configured
-  // percentage/category rules in Settings > Main Balance, and the exact
-  // amount storeCashOut/processSalary will enforce on submit.
-  const [balanceInfo, setBalanceInfo] = useState<{
-    source: 'main' | 'project'; allocated: number; available: number; spent: number;
-  } | null>(null);
-
-  const fetchAvailableBalance = async (category: string) => {
-    try {
-      const res = await axios.get('/api/transactions/available-balance', {
-        params: { category },
-      });
-      if (res.data.status === 'success') {
-        setBalanceInfo(res.data.data);
-      }
-    } catch (err) {
-      // ignore
-    }
-  };
-
-  useEffect(() => {
-    if (isExpenseModalOpen) {
-      fetchAvailableBalance(expenseFormData.expenseCategory);
-    }
-  }, [isExpenseModalOpen, expenseFormData.expenseCategory]);
 
   // Salary disbursement is create-only and per-employee, so the mutation
   // endpoint is derived from whichever employee is currently selected.
@@ -341,12 +344,17 @@ export default function EmployeesPage() {
     e.preventDefault();
     if (!selectedEmployee) return;
 
-    setIsProcessingSalary(true);
     const basic = parseFloat(salaryFormData.basicSalary) || 0;
     const bonus = parseFloat(salaryFormData.bonus) || 0;
     const ded = parseFloat(salaryFormData.deduction) || 0;
     const paid = parseFloat(salaryFormData.paidAmount) || 0;
 
+    if (paid > 0 && !salaryFormData.bankAccountId) {
+      error('Select a bank account to disburse from');
+      return;
+    }
+
+    setIsProcessingSalary(true);
     try {
       await createSalary(
         {
@@ -355,12 +363,13 @@ export default function EmployeesPage() {
           bonus: bonus,
           deduction: ded,
           paidAmount: paid,
-          paymentMethod: salaryFormData.paymentMethod,
+          bankAccountId: salaryFormData.bankAccountId,
           referenceNumber: salaryFormData.referenceNumber,
           notes: salaryFormData.notes,
         },
         `Successfully logged salary disbursement of ${formatCurrencyLocal(paid)} for ${selectedEmployee.fullName}`
       );
+      fetchBankAccounts();
       setIsSalaryModalOpen(false);
     } catch (err) {
       // handled
@@ -382,6 +391,10 @@ export default function EmployeesPage() {
       error('Enter a valid expense amount');
       return;
     }
+    if (!expenseFormData.bankAccountId) {
+      error('Select a bank account to pay from');
+      return;
+    }
 
     setIsLoggingExpense(true);
     try {
@@ -392,7 +405,7 @@ export default function EmployeesPage() {
           expenseCategory: expenseFormData.expenseCategory,
           paidTo: expenseFormData.paidTo || OFFICE_EXPENSE_CATEGORIES.find((c) => c.key === expenseFormData.expenseCategory)?.label,
           amount,
-          paymentMethod: expenseFormData.paymentMethod,
+          bankAccountId: expenseFormData.bankAccountId,
           referenceNumber: expenseFormData.referenceNumber,
           notes: expenseFormData.notes,
         },
@@ -403,10 +416,11 @@ export default function EmployeesPage() {
         expenseCategory: 'OFFICE_RENT',
         paidTo: '',
         amount: '',
-        paymentMethod: 'BANK',
+        bankAccountId: activeBankAccounts[0]?.id || '',
         referenceNumber: '',
         notes: '',
       });
+      fetchBankAccounts();
       setIsExpenseModalOpen(false);
     } catch (err) {
       // handled
@@ -416,30 +430,37 @@ export default function EmployeesPage() {
   };
 
   const formatCurrencyLocal = (amount: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+    const sign = amount < 0 ? '-' : '';
+    return `${sign}৳ ${Math.abs(amount).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const BalanceWidget = ({ info }: { info: typeof balanceInfo }) => {
-    if (!info) {
-      return <div className="mt-2 text-[10px] text-slate-600">Loading balance...</div>;
+  // Replaces the old company-wide "Main Balance" check for office expense /
+  // salary forms — the account actually being debited is the source of truth
+  // now, so this just previews its balance before/after the entered amount.
+  const BankAccountBalanceWidget = ({ accountId, amount }: { accountId: string; amount: number }) => {
+    const account = bankAccounts.find((a) => a.id === accountId);
+    if (!account) {
+      return (
+        <div className="mt-2 text-[10px] text-slate-600">
+          {activeBankAccounts.length === 0 ? 'No active bank account found — create one in Bank Accounts first.' : 'Select a bank account.'}
+        </div>
+      );
     }
-    const label = info.source === 'main'
-      ? 'Main Balance (All Projects)'
-      : 'Project Balance';
+    const remaining = account.currentBalance - amount;
     return (
       <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[10px]">
         <div className="p-1.5 bg-slate-950/40 border border-slate-800 rounded-lg">
-          <span className="text-slate-550 block text-[9px] uppercase">{label}</span>
-          <span className="text-slate-200 font-bold">{formatCurrencyLocal(info.allocated)}</span>
+          <span className="text-slate-550 block text-[9px] uppercase">Account Balance</span>
+          <span className="text-slate-200 font-bold">{formatCurrencyLocal(account.currentBalance)}</span>
         </div>
         <div className="p-1.5 bg-slate-950/40 border border-slate-800 rounded-lg">
-          <span className="text-slate-550 block text-[9px] uppercase">Spent</span>
-          <span className="text-rose-400 font-bold">{formatCurrencyLocal(info.spent)}</span>
+          <span className="text-slate-550 block text-[9px] uppercase">This Expense</span>
+          <span className="text-rose-400 font-bold">{formatCurrencyLocal(amount)}</span>
         </div>
         <div className="p-1.5 bg-slate-950/40 border border-cyan-500/20 rounded-lg">
-          <span className="text-slate-550 block text-[9px] uppercase">Remaining</span>
-          <span className={`font-bold ${info.available >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
-            {formatCurrencyLocal(info.available)}
+          <span className="text-slate-550 block text-[9px] uppercase">Remaining After</span>
+          <span className={`font-bold ${remaining >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+            {formatCurrencyLocal(remaining)}
           </span>
         </div>
       </div>
@@ -474,7 +495,11 @@ export default function EmployeesPage() {
           )}
           {user && user.role !== 'DATA_ENTRY_OPERATOR' && activeTab === 'expense' && (
             <Button
-              onClick={() => setIsExpenseModalOpen(true)}
+              onClick={() => {
+                setExpenseFormData((prev) => ({ ...prev, bankAccountId: prev.bankAccountId || activeBankAccounts[0]?.id || '' }));
+                fetchBankAccounts();
+                setIsExpenseModalOpen(true);
+              }}
               icon={<Receipt className="h-4.5 w-4.5" />}
             >
               Log Expense
@@ -956,7 +981,6 @@ export default function EmployeesPage() {
                   <option key={c.key} value={c.key} className="bg-slate-900 text-slate-200">{c.label}</option>
                 ))}
               </Select>
-              <BalanceWidget info={balanceInfo} />
             </div>
 
             <div>
@@ -990,16 +1014,19 @@ export default function EmployeesPage() {
             </div>
 
             <div>
-              <label className="block text-slate-450 text-xs font-semibold mb-2">Payment Method</label>
+              <label className="block text-slate-450 text-xs font-semibold mb-2">Bank Account</label>
               <Select
-                value={expenseFormData.paymentMethod}
-                onChange={(e) => setExpenseFormData({ ...expenseFormData, paymentMethod: e.target.value })}
+                value={expenseFormData.bankAccountId}
+                onChange={(e) => setExpenseFormData({ ...expenseFormData, bankAccountId: e.target.value })}
               >
-                <option value="CASH" className="bg-slate-900 text-slate-200">CASH</option>
-                <option value="BANK" className="bg-slate-900 text-slate-200">BANK TRANSFER</option>
-                <option value="CHEQUE" className="bg-slate-900 text-slate-200">CHEQUE</option>
-                <option value="MOBILE_BANKING" className="bg-slate-900 text-slate-200">MOBILE BANKING</option>
+                <option value="" disabled className="bg-slate-900 text-slate-200">Select account...</option>
+                {activeBankAccounts.map((a) => (
+                  <option key={a.id} value={a.id} className="bg-slate-900 text-slate-200">
+                    {a.name} ({formatCurrencyLocal(a.currentBalance)})
+                  </option>
+                ))}
               </Select>
+              <BankAccountBalanceWidget accountId={expenseFormData.bankAccountId} amount={parseFloat(expenseFormData.amount) || 0} />
             </div>
 
             <div>
@@ -1033,7 +1060,7 @@ export default function EmployeesPage() {
             onClose={() => setIsSalaryModalOpen(false)}
             title={
               <div className="flex items-center gap-2">
-                <DollarSign className="h-4.5 w-4.5 text-emerald-400" />
+                <TakaIcon className="h-4.5 w-4.5 text-emerald-400" />
                 Disburse Salary / Wages
               </div>
             }
@@ -1051,11 +1078,6 @@ export default function EmployeesPage() {
                   <span className="font-bold text-slate-400">Fixed monthly pay:</span>{' '}
                   {formatCurrencyLocal(selectedEmployee.monthlySalary)}
                 </p>
-              </div>
-
-              <div>
-                <label className="block text-slate-450 text-xs font-semibold mb-2">Company-wide Main Balance</label>
-                <BalanceWidget info={balanceInfo} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1156,18 +1178,22 @@ export default function EmployeesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-slate-455 text-xs font-semibold mb-2">Payment Method</label>
+                  <label className="block text-slate-455 text-xs font-semibold mb-2">Bank Account</label>
                   <Select
-                    value={salaryFormData.paymentMethod}
-                    onChange={(e) => setSalaryFormData({ ...salaryFormData, paymentMethod: e.target.value })}
+                    value={salaryFormData.bankAccountId}
+                    onChange={(e) => setSalaryFormData({ ...salaryFormData, bankAccountId: e.target.value })}
                   >
-                    <option value="CASH" className="bg-slate-900 text-slate-200">CASH</option>
-                    <option value="BANK" className="bg-slate-900 text-slate-200">BANK TRANSFER</option>
-                    <option value="CHEQUE" className="bg-slate-900 text-slate-200">CHEQUE</option>
-                    <option value="MOBILE_BANKING" className="bg-slate-900 text-slate-200">MOBILE BANKING</option>
+                    <option value="" disabled className="bg-slate-900 text-slate-200">Select account...</option>
+                    {activeBankAccounts.map((a) => (
+                      <option key={a.id} value={a.id} className="bg-slate-900 text-slate-200">
+                        {a.name} ({formatCurrencyLocal(a.currentBalance)})
+                      </option>
+                    ))}
                   </Select>
                 </div>
               </div>
+
+              <BankAccountBalanceWidget accountId={salaryFormData.bankAccountId} amount={parseFloat(salaryFormData.paidAmount) || 0} />
 
               <div>
                 <label className="block text-slate-455 text-xs font-semibold mb-2">Reference # (Check/Receipt No.)</label>

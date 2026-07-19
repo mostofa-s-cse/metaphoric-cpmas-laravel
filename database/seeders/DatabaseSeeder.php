@@ -38,5 +38,8 @@ class DatabaseSeeder extends Seeder
 
         // 2. Website CMS Seed Data (services, portfolio, team, trust badges, testimonials, FAQs)
         $this->call(WebsiteCmsSeeder::class);
+
+        // 3. Demo dataset — projects, supplier, vendors, bank account, labours, employees
+        $this->call(DemoDataSeeder::class);
     }
 }

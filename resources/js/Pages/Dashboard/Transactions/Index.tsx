@@ -19,10 +19,20 @@ import { useResourceList } from '@/hooks/useResourceList';
 import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
-  ArrowUpDown, Plus, Search, ArrowUpRight, ArrowDownRight, DollarSign, Calendar, X, Loader2, Trash2
+  ArrowUpDown, Plus, Search, ArrowUpRight, ArrowDownRight, Calendar, X, Loader2, Trash2
 } from 'lucide-react';
 
 const paymentMethodEnum = z.enum(['CASH', 'BANK', 'CHEQUE', 'MOBILE_BANKING']);
+
+// Mirrors ExpenseCategory::isOfficeExpense() on the backend — these categories
+// never draw from a project's own balance, they draw from a specific Bank
+// Account instead (selected below), not a generic Payment Mode. LABOR is
+// project-wise (draws from the linked project's own balance), so it's not
+// in this list — it keeps the ordinary Payment Mode field.
+const OFFICE_EXPENSE_CATEGORY_KEYS = [
+  'OFFICE_RENT', 'UTILITIES', 'TRANSPORTATION', 'FUEL',
+  'EQUIPMENT_RENTAL', 'EMPLOYEE_SALARY', 'MISCELLANEOUS',
+];
 
 const cashInSchema = z.object({
   date: z.string().min(1, 'Date is required'),
@@ -46,11 +56,20 @@ const cashOutSchema = z.object({
   amount: z.string().refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) > 0, {
     message: 'Amount must be positive',
   }),
-  paymentMethod: paymentMethodEnum,
+  paymentMethod: paymentMethodEnum.optional(),
+  bankAccountId: z.string().optional().or(z.literal('')),
   referenceNumber: z.string().optional().or(z.literal('')),
   notes: z.string().max(500).optional().or(z.literal('')),
   vendorId: z.string().optional().or(z.literal('')),
   supplierId: z.string().optional().or(z.literal('')),
+}).superRefine((data, ctx) => {
+  const isOfficeExpense = OFFICE_EXPENSE_CATEGORY_KEYS.includes(data.expenseCategory);
+  if (isOfficeExpense && !data.bankAccountId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Bank Account is required', path: ['bankAccountId'] });
+  }
+  if (!isOfficeExpense && !data.paymentMethod) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Payment method is required', path: ['paymentMethod'] });
+  }
 });
 
 type CashInFormValues = z.infer<typeof cashInSchema>;
@@ -87,6 +106,14 @@ interface ApiCashOut {
     name: string;
     code: string;
   };
+}
+
+interface ApiBankAccount {
+  id: string;
+  name: string;
+  accountType: 'BANK' | 'CASH' | 'MOBILE_BANKING';
+  currentBalance: number;
+  isActive: boolean;
 }
 
 interface TransactionSummary {
@@ -183,6 +210,7 @@ export default function TransactionsPage() {
       paidTo: '',
       amount: '',
       paymentMethod: 'CASH',
+      bankAccountId: '',
       referenceNumber: '',
       notes: '',
       vendorId: '',
@@ -193,6 +221,24 @@ export default function TransactionsPage() {
 
   const expenseCategory = watchCashOut('expenseCategory');
   const cashOutProjectId = watchCashOut('projectId');
+  const isOfficeExpenseCategory = OFFICE_EXPENSE_CATEGORY_KEYS.includes(expenseCategory);
+
+  // Office / global categories (incl. Employee Salary) draw from a specific
+  // Bank Account instead of the generic Payment Mode — same account list and
+  // rule as the Office Management page's expense/salary forms.
+  const [bankAccounts, setBankAccounts] = useState<ApiBankAccount[]>([]);
+  const activeBankAccounts = bankAccounts.filter((a) => a.isActive);
+
+  const fetchBankAccounts = async () => {
+    try {
+      const res = await axios.get('/api/bank-accounts');
+      if (res.data.status === 'success') {
+        setBankAccounts(res.data.data.accounts || []);
+      }
+    } catch (err) {
+      // ignore
+    }
+  };
 
   const fetchProjects = async () => {
     try {
@@ -264,6 +310,7 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     fetchProjects();
+    fetchBankAccounts();
   }, []);
 
   // Every mutation needs to refresh both the ledger list and the summary tiles.
@@ -300,11 +347,13 @@ export default function TransactionsPage() {
       paidTo: '',
       amount: '',
       paymentMethod: 'CASH',
+      bankAccountId: '',
       referenceNumber: '',
       notes: '',
       vendorId: '',
       supplierId: '',
     });
+    fetchBankAccounts();
     setIsCashOutModalOpen(true);
   };
 
@@ -328,14 +377,18 @@ export default function TransactionsPage() {
   const onCashOutSubmit = async (values: CashOutFormValues) => {
     setIsCreatingCashOut(true);
     try {
+      const isOfficeExpense = OFFICE_EXPENSE_CATEGORY_KEYS.includes(values.expenseCategory);
       const payload = {
         ...values,
         amount: parseFloat(values.amount),
         projectId: values.projectId === 'GENERAL' || values.projectId === '' ? null : values.projectId,
         vendorId: values.expenseCategory === 'VENDOR_PAYMENT' && values.vendorId ? values.vendorId : null,
         supplierId: values.expenseCategory === 'SUPPLIER_PAYMENT' && values.supplierId ? values.supplierId : null,
+        paymentMethod: isOfficeExpense ? undefined : values.paymentMethod,
+        bankAccountId: isOfficeExpense ? values.bankAccountId : undefined,
       };
       await createCashOut(payload, 'Cash Out transaction logged successfully');
+      fetchBankAccounts();
       setIsCashOutModalOpen(false);
     } catch (err) {
       // ignore
@@ -368,7 +421,8 @@ export default function TransactionsPage() {
   };
 
   const formatCurrencyLocal = (amount: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+    const sign = amount < 0 ? '-' : '';
+    return `${sign}৳ ${Math.abs(amount).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   return (
@@ -869,16 +923,38 @@ export default function TransactionsPage() {
               </div>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-2">Payment Mode</label>
-                <Select
-                  {...registerCashOut('paymentMethod')}
-                  error={cashOutErrors.paymentMethod?.message}
-                >
-                  <option value="BANK" className="bg-slate-900 text-slate-200">Bank Transfer</option>
-                  <option value="CHEQUE" className="bg-slate-900 text-slate-200">Cheque payment</option>
-                  <option value="CASH" className="bg-slate-900 text-slate-200">Cash Disbursed</option>
-                  <option value="MOBILE_BANKING" className="bg-slate-900 text-slate-200">Mobile Banking</option>
-                </Select>
+                {isOfficeExpenseCategory ? (
+                  <>
+                    <label className="block text-slate-400 text-xs font-semibold mb-2">Bank Account</label>
+                    <Select
+                      {...registerCashOut('bankAccountId')}
+                      error={cashOutErrors.bankAccountId?.message}
+                    >
+                      <option value="" disabled className="bg-slate-900 text-slate-200">Select account...</option>
+                      {activeBankAccounts.map((a) => (
+                        <option key={a.id} value={a.id} className="bg-slate-900 text-slate-200">
+                          {a.name} ({formatCurrencyLocal(a.currentBalance)})
+                        </option>
+                      ))}
+                    </Select>
+                    {activeBankAccounts.length === 0 && (
+                      <p className="mt-1 text-[10px] text-rose-400">No active bank account found — create one in Bank Accounts first.</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-slate-400 text-xs font-semibold mb-2">Payment Mode</label>
+                    <Select
+                      {...registerCashOut('paymentMethod')}
+                      error={cashOutErrors.paymentMethod?.message}
+                    >
+                      <option value="BANK" className="bg-slate-900 text-slate-200">Bank Transfer</option>
+                      <option value="CHEQUE" className="bg-slate-900 text-slate-200">Cheque payment</option>
+                      <option value="CASH" className="bg-slate-900 text-slate-200">Cash Disbursed</option>
+                      <option value="MOBILE_BANKING" className="bg-slate-900 text-slate-200">Mobile Banking</option>
+                    </Select>
+                  </>
+                )}
               </div>
             </div>
 

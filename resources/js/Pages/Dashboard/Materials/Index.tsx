@@ -19,7 +19,7 @@ import { useResourceList } from '@/hooks/useResourceList';
 import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
-  PackageSearch, Plus, Search, Truck, FolderKanban, DollarSign, Calendar, Layers, X, Trash2, Edit2, Loader2, Info
+  PackageSearch, Plus, Search, Truck, FolderKanban, Calendar, Layers, X, Trash2, Edit2, Loader2, Info
 } from 'lucide-react';
 
 const materialSchema = z.object({
@@ -242,7 +242,8 @@ export default function MaterialsPage() {
   };
 
   const formatCurrencyLocal = (amount: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+    const sign = amount < 0 ? '-' : '';
+    return `${sign}৳ ${Math.abs(amount).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   return (

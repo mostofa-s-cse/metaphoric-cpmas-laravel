@@ -8,6 +8,7 @@ import { z } from 'zod';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Modal } from '@/Components/ui/Modal';
 import { AlertDialog } from '@/Components/ui/AlertDialog';
+import { Pagination } from '@/Components/ui/Pagination';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Select } from '@/Components/ui/Select';
@@ -17,7 +18,7 @@ import { useToast } from '@/hooks/useToast';
 import {
   Landmark, Plus, RefreshCw, TrendingUp, TrendingDown,
   Wallet, Building2, Smartphone, Edit2, SlidersHorizontal,
-  AlertTriangle, CheckCircle2, ChevronRight, Eye,
+  AlertTriangle, CheckCircle2, ChevronRight, Eye, MinusCircle,
 } from 'lucide-react';
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -31,8 +32,8 @@ const accountSchema = z.object({
 });
 
 const adjustSchema = z.object({
-  newBalance: z.string().refine(v => !isNaN(parseFloat(v)), 'Valid number required'),
-  reason:     z.string().min(3, 'Reason is required'),
+  adjustmentAmount: z.string().refine(v => v !== '' && !isNaN(parseFloat(v)), 'Valid number required'),
+  reason:           z.string().min(3, 'Reason is required'),
 });
 
 type AccountForm   = z.infer<typeof accountSchema>;
@@ -50,6 +51,16 @@ interface BankAccount {
   totalOut: number;
   notes?: string;
   isActive: boolean;
+}
+
+interface HistoryEntry {
+  id: string;
+  type: 'CASH_IN' | 'CASH_OUT' | 'ADJUSTMENT';
+  date: string;
+  description: string;
+  category: string;
+  amount: number;
+  referenceNumber?: string;
 }
 
 interface Summary {
@@ -91,6 +102,13 @@ export default function BankAccountsPage() {
   const [selected, setSelected] = useState<BankAccount | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // History modal — paginated CashIn/CashOut ledger for one account
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyLimit, setHistoryLimit] = useState(10);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+
   // ── Forms ──────────────────────────────────────────────────────────────────
   const createForm = useForm<AccountForm>({
     resolver: zodResolver(accountSchema),
@@ -103,7 +121,7 @@ export default function BankAccountsPage() {
 
   const adjustForm = useForm<AdjustForm>({
     resolver: zodResolver(adjustSchema),
-    defaultValues: { newBalance: '', reason: '' },
+    defaultValues: { adjustmentAmount: '', reason: '' },
   });
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
@@ -125,6 +143,17 @@ export default function BankAccountsPage() {
   };
 
   useEffect(() => { fetchAccounts(); }, [typeFilter]);
+
+  // Keep the currently-selected account's summary (currentBalance/totalIn/
+  // totalOut) in sync whenever the accounts list refetches — otherwise the
+  // History/Adjust modals kept showing the snapshot captured at open time,
+  // going stale after a Reconcile or another adjustment lands.
+  useEffect(() => {
+    if (!selected) return;
+    const fresh = accounts.find(a => a.id === selected.id);
+    if (fresh && fresh !== selected) setSelected(fresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const onCreateSubmit = async (values: AccountForm) => {
@@ -180,7 +209,7 @@ export default function BankAccountsPage() {
 
   const handleAdjustOpen = (acc: BankAccount) => {
     setSelected(acc);
-    adjustForm.reset({ newBalance: String(acc.currentBalance), reason: '' });
+    adjustForm.reset({ adjustmentAmount: '', reason: '' });
     setIsAdjustOpen(true);
   };
 
@@ -189,7 +218,9 @@ export default function BankAccountsPage() {
     setIsSaving(true);
     try {
       const res = await axios.post(`/api/bank-accounts/${selected.id}/adjust`, {
-        newBalance: parseFloat(values.newBalance),
+        // Backend still takes the absolute resulting balance — the amount
+        // typed here is a delta on top of the current balance, added client-side.
+        newBalance: Number(selected.currentBalance) + parseFloat(values.adjustmentAmount),
         reason:     values.reason,
       });
       const adj = res.data.data.adjustment;
@@ -212,6 +243,37 @@ export default function BankAccountsPage() {
       error(e.response?.data?.message || 'Reconcile failed');
     }
   };
+
+  const fetchHistory = async (accountId: string, page: number, limit: number) => {
+    setIsFetchingHistory(true);
+    try {
+      const res = await axios.get(`/api/bank-accounts/${accountId}/history`, {
+        params: { page, limit },
+      });
+      if (res.data.status === 'success') {
+        setHistory(res.data.data.history || []);
+        setHistoryTotal(res.data.data.total || 0);
+      }
+    } catch {
+      error('Failed to load account history');
+    } finally {
+      setIsFetchingHistory(false);
+    }
+  };
+
+  const handleViewHistory = (acc: BankAccount) => {
+    setSelected(acc);
+    setHistoryPage(1);
+    setIsDetailOpen(true);
+    fetchHistory(acc.id, 1, historyLimit);
+  };
+
+  useEffect(() => {
+    if (isDetailOpen && selected) {
+      fetchHistory(selected.id, historyPage, historyLimit);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyPage, historyLimit]);
 
   const handleDeactivate = async () => {
     if (!selected) return;
@@ -327,7 +389,8 @@ export default function BankAccountsPage() {
               return (
                 <div
                   key={acc.id}
-                  className="bg-slate-900/25 border border-slate-800/80 rounded-2xl shadow-xl backdrop-blur-md overflow-hidden hover:border-slate-700/80 transition-all duration-300 group"
+                  onClick={() => handleViewHistory(acc)}
+                  className="bg-slate-900/25 border border-slate-800/80 rounded-2xl shadow-xl backdrop-blur-md overflow-hidden hover:border-slate-700/80 transition-all duration-300 group cursor-pointer"
                 >
                   {/* Card header */}
                   <div className={`bg-gradient-to-r ${grad} px-5 py-4`}>
@@ -367,7 +430,7 @@ export default function BankAccountsPage() {
                     <div className="text-[10px] text-slate-500 font-medium">Opening Balance: {fmt(acc.openingBalance)}</div>
 
                     {/* Action buttons */}
-                    <div className="flex gap-2 pt-2 border-t border-slate-800/40">
+                    <div className="flex gap-2 pt-2 border-t border-slate-800/40" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => handleAdjustOpen(acc)}
                         className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-semibold hover:bg-cyan-500/20 transition-all cursor-pointer"
@@ -508,14 +571,24 @@ export default function BankAccountsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">New Actual Balance (৳) *</label>
+              <label className="block text-sm font-medium text-slate-300 mb-1">Adjustment Amount (৳) *</label>
               <Input
-                {...adjustForm.register('newBalance')}
+                {...adjustForm.register('adjustmentAmount')}
                 type="number"
                 step="0.01"
-                placeholder="Enter the real balance you see"
+                placeholder="e.g. 300 to add, -300 to deduct"
               />
-              {adjustForm.formState.errors.newBalance && <p className="text-red-500 text-xs mt-1">{adjustForm.formState.errors.newBalance.message}</p>}
+              {adjustForm.formState.errors.adjustmentAmount && <p className="text-red-500 text-xs mt-1">{adjustForm.formState.errors.adjustmentAmount.message}</p>}
+              {(() => {
+                const typed = parseFloat(adjustForm.watch('adjustmentAmount'));
+                if (isNaN(typed)) return null;
+                const next = Number(selected.currentBalance) + typed;
+                return (
+                  <p className="text-xs mt-2 text-slate-400">
+                    New balance will be: <span className={`font-bold ${next < 0 ? 'text-amber-500' : 'text-slate-100'}`}>{fmt(next)}</span>
+                  </p>
+                );
+              })()}
             </div>
 
             <div>
@@ -536,6 +609,106 @@ export default function BankAccountsPage() {
               <Button type="submit" disabled={isSaving}>{isSaving ? 'Adjusting…' : 'Apply Adjustment'}</Button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      {/* ── Account History Modal ────────────────────────────────────────── */}
+      <Modal
+        open={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        title={selected ? `${selected.name} — Transaction History` : 'Transaction History'}
+        size="4xl"
+      >
+        {selected && (
+          <div className="space-y-4">
+            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-3 text-sm flex items-center justify-between">
+              <div>
+                <p className="text-slate-400">Current balance</p>
+                <p className="text-xl font-bold text-slate-100 mt-0.5">{fmt(selected.currentBalance)}</p>
+              </div>
+              <div className="flex gap-4 text-xs">
+                {[
+                  { label: 'Opening', value: selected.openingBalance, icon: MinusCircle, color: 'text-rose-400' },
+                  { label: 'In',      value: selected.totalIn,       icon: TrendingUp,  color: 'text-emerald-400' },
+                  { label: 'Out',     value: selected.totalOut,      icon: TrendingDown, color: 'text-rose-400' },
+                ].map(stat => {
+                  const Icon = stat.icon;
+                  return (
+                    <div key={stat.label} className={`flex items-center gap-1 ${stat.color}`}>
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{fmt(stat.value)}</span>
+                      <span className="text-slate-600">{stat.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="border border-slate-800 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 bg-slate-900/50 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                      <th className="py-3 px-4">Date</th>
+                      <th className="py-3 px-4">Type</th>
+                      <th className="py-3 px-4">Description</th>
+                      <th className="py-3 px-4">Category</th>
+                      <th className="py-3 px-4">Reference</th>
+                      <th className="py-3 px-4 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {isFetchingHistory ? (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-slate-500">
+                          <RefreshCw className="h-4 w-4 animate-spin inline mr-2" /> Loading history...
+                        </td>
+                      </tr>
+                    ) : history.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-slate-600">
+                          No transactions found for this account.
+                        </td>
+                      </tr>
+                    ) : (
+                      history.map((h) => {
+                        const isPositive = h.type === 'ADJUSTMENT' ? h.amount >= 0 : h.type === 'CASH_IN';
+                        const typeLabel = h.type === 'ADJUSTMENT' ? 'Adjustment' : h.type === 'CASH_IN' ? 'Cash In' : 'Cash Out';
+                        return (
+                          <tr key={`${h.type}-${h.id}`} className="hover:bg-slate-900/40 transition-colors">
+                            <td className="py-3 px-4 text-slate-400">{new Date(h.date).toLocaleDateString()}</td>
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide ${
+                                h.type === 'ADJUSTMENT'
+                                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                  : isPositive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                              }`}>
+                                {typeLabel}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-200 font-medium">{h.description || '—'}</td>
+                            <td className="py-3 px-4 text-slate-400">{h.category ? h.category.replace(/_/g, ' ') : '—'}</td>
+                            <td className="py-3 px-4 text-slate-500">{h.referenceNumber || '—'}</td>
+                            <td className={`py-3 px-4 text-right font-bold ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {isPositive ? '+' : '-'}{fmt(Math.abs(h.amount))}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination
+                currentPage={historyPage}
+                totalPages={Math.max(1, Math.ceil(historyTotal / historyLimit))}
+                totalItems={historyTotal}
+                limit={historyLimit}
+                onPageChange={setHistoryPage}
+                onLimitChange={setHistoryLimit}
+              />
+            </div>
+          </div>
         )}
       </Modal>
     </AuthenticatedLayout>

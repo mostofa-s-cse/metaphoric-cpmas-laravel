@@ -200,6 +200,7 @@ Route::middleware(['auth'])->prefix('api')->group(function () {
     Route::post('/bank-accounts/{id}/adjust', [BankAccountController::class, 'adjust']);
     Route::post('/bank-accounts/{id}/reconcile', [BankAccountController::class, 'reconcile']);
     Route::delete('/bank-accounts/{id}', [BankAccountController::class, 'destroy']);
+    Route::get('/bank-accounts/{id}/history', [BankAccountController::class, 'history']);
 
     // Project Ledger (per-project statement of account)
     Route::get('/projects/{projectId}/ledger', [ProjectLedgerController::class, 'index']);

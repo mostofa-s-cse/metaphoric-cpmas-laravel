@@ -4,8 +4,9 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import {
   FolderKanban, Play, CheckCircle2, Users2, Truck, Briefcase, HardHat,
   ArrowUpRight, ArrowDownRight, Coins, AlertTriangle, TrendingUp, TrendingDown,
-  Wallet, CircleDollarSign, UserCheck, PiggyBank,
+  Wallet, UserCheck, PiggyBank,
 } from 'lucide-react';
+import { TakaIcon } from '@/Components/ui/TakaIcon';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, PieChart, Pie, Cell, BarChart, Bar,
@@ -14,7 +15,8 @@ import {
 const COLORS = ['#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#e11d48'];
 
 function formatCurrency(val: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
+  const sign = val < 0 ? '-' : '';
+  return `${sign}৳ ${Math.abs(val).toLocaleString('en-BD', { maximumFractionDigits: 0 })}`;
 }
 
 interface Summary {
@@ -23,7 +25,7 @@ interface Summary {
   totalEmployees: number; totalLabour: number; totalCashIn: number;
   totalCashOut: number; netProfit: number; supplierDue: number;
   vendorDue: number; salaryDue: number; cashBalance: number;
-  mainBalance: number; mainBalanceAllocated: number;
+  bankBalance: number; bankAccountCount: number;
 }
 
 interface Props {
@@ -52,10 +54,10 @@ export default function DashboardIndex({ summary, expenseBreakdown, monthlyTrend
     { title: 'Total Cash In',      value: formatCurrency(summary.totalCashIn), desc: 'Accumulated revenue',      icon: ArrowUpRight,    color: 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5', roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
     { title: 'Total Cash Out',     value: formatCurrency(summary.totalCashOut),desc: 'Accumulated spending',     icon: ArrowDownRight,  color: 'text-rose-400 border-rose-500/20 bg-rose-500/5',       roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
     { title: 'Cash Balance',       value: formatCurrency(summary.cashBalance), desc: 'Current cash in hand',     icon: Wallet,          color: 'text-teal-400 border-teal-500/20 bg-teal-500/5',       roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Main Balance',       value: formatCurrency(summary.mainBalance), desc: `of ${formatCurrency(summary.mainBalanceAllocated)} total paid-in`, icon: PiggyBank, color: 'text-amber-400 border-amber-500/20 bg-amber-500/5', roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
+    { title: 'Bank Balance',       value: formatCurrency(summary.bankBalance), desc: `Across ${summary.bankAccountCount} active account${summary.bankAccountCount === 1 ? '' : 's'}`, icon: PiggyBank, color: 'text-amber-400 border-amber-500/20 bg-amber-500/5', roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
     { title: 'Supplier Due',       value: formatCurrency(summary.supplierDue), desc: 'Unpaid bills',             icon: Coins,           color: 'text-amber-400 border-amber-500/20 bg-amber-500/5',    roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
     { title: 'Vendor Due',         value: formatCurrency(summary.vendorDue),  desc: 'Pending milestones',        icon: AlertTriangle,   color: 'text-red-400 border-red-500/20 bg-red-500/5',          roles: ['SUPER_ADMIN', 'ADMIN', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Salary Due',         value: formatCurrency(summary.salaryDue),  desc: 'Employee unpaid salary',    icon: CircleDollarSign,color: 'text-fuchsia-400 border-fuchsia-500/20 bg-fuchsia-500/5',roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
+    { title: 'Salary Due',         value: formatCurrency(summary.salaryDue),  desc: 'Employee unpaid salary',    icon: TakaIcon,color: 'text-fuchsia-400 border-fuchsia-500/20 bg-fuchsia-500/5',roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
   ];
 
   const allowedWidgets = widgetData.filter((w) => w.roles.includes(userRole));
@@ -116,7 +118,7 @@ export default function DashboardIndex({ summary, expenseBreakdown, monthlyTrend
                     <LineChart data={monthlyTrends}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                       <XAxis dataKey="month" stroke="#64748b" />
-                      <YAxis stroke="#64748b" tickFormatter={(v) => `$${v / 1000}k`} />
+                      <YAxis stroke="#64748b" tickFormatter={(v) => `৳${v / 1000}k`} />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' }}
                         formatter={(v: any) => formatCurrency(Number(v))}
@@ -192,7 +194,7 @@ export default function DashboardIndex({ summary, expenseBreakdown, monthlyTrend
                       stroke="#64748b"
                       tickFormatter={(name: string) => (name.length > 14 ? `${name.slice(0, 12)}...` : name)}
                     />
-                    <YAxis stroke="#64748b" tickFormatter={(v) => `$${v / 1000}k`} />
+                    <YAxis stroke="#64748b" tickFormatter={(v) => `৳${v / 1000}k`} />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' }}
                       itemStyle={{ color: '#cbd5e1' }}

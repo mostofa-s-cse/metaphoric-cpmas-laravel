@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Models\BankAccount;
 use App\Models\CashOut;
 use App\Models\CompanyBalance;
 use App\Models\ExpenseCategory;
@@ -99,5 +100,34 @@ trait HasMainBalance
         return $isProjectWise
             ? 'Insufficient project balance. Available: ' . number_format($available, 2)
             : 'Insufficient main balance. Available: ' . number_format($available, 2);
+    }
+
+    /**
+     * For office/global expense categories (and EMPLOYEE_SALARY) the Main
+     * Balance pool check above is replaced entirely by a specific Bank
+     * Account's currentBalance — the account the money is actually debited
+     * from. Returns [errorMessage, account]; errorMessage is null on success.
+     *
+     * @return array{0: ?string, 1: ?BankAccount}
+     */
+    private function validateBankAccountForExpense(?string $bankAccountId, float $amount): array
+    {
+        if (!$bankAccountId) {
+            return ['Bank Account is required for this expense category', null];
+        }
+
+        $account = BankAccount::find($bankAccountId);
+        if (!$account || !$account->isActive) {
+            return ['Selected bank account is not available', null];
+        }
+
+        if ($amount > (float) $account->currentBalance) {
+            return [
+                "Insufficient balance in {$account->name}. Available: " . number_format((float) $account->currentBalance, 2),
+                null,
+            ];
+        }
+
+        return [null, $account];
     }
 }

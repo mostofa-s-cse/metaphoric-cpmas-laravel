@@ -168,7 +168,7 @@ class EmployeeController extends Controller
             'bonus' => 'nullable|numeric|min:0',
             'deduction' => 'nullable|numeric|min:0',
             'paidAmount' => 'nullable|numeric|min:0',
-            'paymentMethod' => 'required|string|in:CASH,BANK,CHEQUE,MOBILE_BANKING',
+            'bankAccountId' => 'nullable|uuid|exists:bank_accounts,id',
             'referenceNumber' => 'nullable|string',
             'notes' => 'nullable|string',
         ]);
@@ -191,20 +191,17 @@ class EmployeeController extends Controller
             $paymentStatus = $paidAmount >= $netSalary ? 'PAID' : 'PARTIAL';
         }
 
+        $account = null;
         if ($paidAmount > 0) {
-            $projectId = $data['projectId'] ?? null;
-            $available = $this->availableBalance($projectId, 'EMPLOYEE_SALARY');
-            if ($paidAmount > $available) {
-                return $this->apiBadRequest(
-                    $this->insufficientBalanceMessage($available, $projectId, 'EMPLOYEE_SALARY'),
-                    self::PATH . '/salaries'
-                );
+            [$error, $account] = $this->validateBankAccountForExpense($data['bankAccountId'] ?? null, $paidAmount);
+            if ($error) {
+                return $this->apiBadRequest($error, self::PATH . '/salaries');
             }
         }
 
         [$salary, $cashOut] = DB::transaction(function () use (
             $employee, $employeeId, $data, $basicSalary, $bonus, $deduction,
-            $netSalary, $paidAmount, $dueAmount, $paymentStatus
+            $netSalary, $paidAmount, $dueAmount, $paymentStatus, $account
         ) {
             $salary = Salary::create([
                 'employeeId' => $employeeId,
@@ -225,7 +222,8 @@ class EmployeeController extends Controller
                 'expenseCategory' => 'EMPLOYEE_SALARY',
                 'paidTo' => $employee->fullName,
                 'amount' => $paidAmount,
-                'paymentMethod' => $data['paymentMethod'],
+                'paymentMethod' => $account?->accountType ?? 'BANK',
+                'bankAccountId' => $account?->id,
                 'referenceNumber' => $data['referenceNumber'] ?? null,
                 'notes' => "Salary for {$data['month']}. Basic: {$basicSalary}, Bonus: {$bonus}, Deduction: {$deduction}, Net: {$netSalary}. " . ($data['notes'] ?? ''),
                 'employeeId' => $employeeId,

@@ -237,11 +237,8 @@ export default function VendorsPage() {
   };
 
   const formatCurrencyLocal = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    }).format(amount);
+    const sign = amount < 0 ? '-' : '';
+    return `${sign}৳ ${Math.abs(amount).toLocaleString('en-BD', { maximumFractionDigits: 0 })}`;
   };
 
   return (

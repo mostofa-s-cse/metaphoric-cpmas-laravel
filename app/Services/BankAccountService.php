@@ -65,16 +65,26 @@ class BankAccountService
      * Full recompute for a single account — reads all linked cash_ins/cash_outs
      * to reset totalIn/totalOut/currentBalance from scratch.
      * Used by the "Reconcile" admin action.
+     *
+     * Every row is attributed via the exact same resolve() logic applyCredit/
+     * applyDebit used when the row was first created (name match first, then
+     * type fallback) — NOT a plain `bankOrCash = name` / `paymentMethod IN`
+     * query. That naive version used to silently drop any CashIn whose free-
+     * text bankOrCash didn't exactly match this account's name (even though
+     * it was originally fallback-matched here), and could double-count
+     * CashOut across multiple same-type accounts. Pulling the full table into
+     * PHP is the same tradeoff SupplierController/VendorController already
+     * make for EncryptedFloat-cast sums.
      */
     public function reconcile(BankAccount $account): void
     {
-        $totalIn = \App\Models\CashIn::where('bankOrCash', $account->name)
+        $totalIn = \App\Models\CashIn::all(['id', 'bankOrCash', 'paymentMethod', 'amountNumeric'])
+            ->filter(fn ($c) => $this->resolve($c->bankOrCash, $c->paymentMethod)?->id === $account->id)
             ->sum('amountNumeric');
 
-        // CashOut has no bankOrCash, so use paymentMethod + accountType
-        $accountType = $account->accountType;
-        $methods = array_keys(array_filter(self::METHOD_TYPE_MAP, fn ($t) => $t === $accountType));
-        $totalOut = \App\Models\CashOut::whereIn('paymentMethod', $methods)
+        $totalOut = \App\Models\CashOut::all(['id', 'bankAccountId', 'paymentMethod', 'amountNumeric'])
+            ->filter(fn ($c) => $c->bankAccountId === $account->id
+                || (!$c->bankAccountId && $this->resolve(null, $c->paymentMethod)?->id === $account->id))
             ->sum('amountNumeric');
 
         $account->totalIn      = $totalIn;
@@ -83,6 +93,17 @@ class BankAccountService
         $account->save();
 
         Cache::forget('bank_accounts:summary');
+    }
+
+    /**
+     * Public wrapper around resolve() — lets callers (e.g. the account
+     * History endpoint) figure out, after the fact, which account a legacy
+     * CashIn/CashOut row (no direct bankAccountId) actually hit, using the
+     * exact same name-then-type-fallback logic applyCredit/applyDebit use.
+     */
+    public function resolveAccountId(?string $accountName, ?string $paymentMethod): ?string
+    {
+        return $this->resolve($accountName, $paymentMethod)?->id;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

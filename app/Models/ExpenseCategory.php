@@ -20,7 +20,7 @@ class ExpenseCategory extends Model
 
     protected $keyType = 'string';
 
-    protected $fillable = ['code', 'label', 'poolType'];
+    protected $fillable = ['code', 'label', 'poolType', 'isOfficeExpense'];
 
     const POOL_PROJECT_WISE = 'PROJECT_WISE';
     const POOL_GLOBAL = 'GLOBAL';
@@ -58,13 +58,14 @@ class ExpenseCategory extends Model
 
     /**
      * Returns true for office / overhead categories (OFFICE_RENT, UTILITIES,
-     * TRANSPORTATION, FUEL, EQUIPMENT_RENTAL, EMPLOYEE_SALARY, MISCELLANEOUS,
-     * LABOR).
+     * TRANSPORTATION, FUEL, EQUIPMENT_RENTAL, EMPLOYEE_SALARY, MISCELLANEOUS).
      *
-     * These categories MUST NEVER draw from a project's own balance pool.
-     * The projectId tag may still be stored on the CashOut row for reporting
-     * purposes, but the balance check and snapshot deduction always use the
-     * global company pool.
+     * These categories MUST NEVER draw from a project's own balance pool, and
+     * (per HasMainBalance::validateBankAccountForExpense) require a specific
+     * Bank Account rather than the company-wide Main Balance pool. LABOR is
+     * NOT in this list — site labor wages are project-wise, paid against the
+     * assigned project's own balance like MATERIALS/VENDOR_PAYMENT/
+     * SUPPLIER_PAYMENT.
      */
     public static function isOfficeExpense(?string $code): bool
     {
@@ -77,7 +78,7 @@ class ExpenseCategory extends Model
             // Fallback to a hardcoded list matching the migration seed
             $officeCategories = [
                 'OFFICE_RENT', 'UTILITIES', 'TRANSPORTATION', 'FUEL',
-                'EQUIPMENT_RENTAL', 'EMPLOYEE_SALARY', 'MISCELLANEOUS', 'LABOR',
+                'EQUIPMENT_RENTAL', 'EMPLOYEE_SALARY', 'MISCELLANEOUS',
             ];
             return in_array($code, $officeCategories, true);
         }

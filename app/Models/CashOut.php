@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\Auditable;
 use App\Traits\BustsDashboardCache;
 use App\Casts\EncryptedFloat;
+use App\Models\BankAccount;
 use App\Models\ExpenseCategory;
 use App\Services\BalanceSnapshotService;
 use App\Services\BankAccountService;
@@ -52,12 +53,17 @@ class CashOut extends Model
                 ]);
             }
 
-            // ── Bank account balance ───────────────────────────────────────
-            app(BankAccountService::class)->applyDebit(
-                null, // CashOut has no bankOrCash field — BankAccountService handles null
-                $cashOut->paymentMethod,
-                (float) $cashOut->amountNumeric
-            );
+            // ── Bank account balance ─────────────────────────────────────────
+            // A specific bankAccountId (office/global expenses, EMPLOYEE_SALARY)
+            // debits that exact account; otherwise fall back to the
+            // paymentMethod-guess used by every other category.
+            if ($cashOut->bankAccountId) {
+                BankAccount::find($cashOut->bankAccountId)?->applyDebit((float) $cashOut->amountNumeric);
+            } else {
+                app(BankAccountService::class)->applyDebit(
+                    null, $cashOut->paymentMethod, (float) $cashOut->amountNumeric
+                );
+            }
         });
 
         static::updated(function (CashOut $cashOut) {
@@ -71,12 +77,22 @@ class CashOut extends Model
                 $cashOut->projectId, $cashOut->expenseCategory, (float) $cashOut->amountNumeric
             );
 
-            // ── Bank account balance ───────────────────────────────────────
+            // ── Bank account balance ─────────────────────────────────────────
+            $oldBankAccountId = $cashOut->getOriginal('bankAccountId');
             $oldMethod = $cashOut->getOriginal('paymentMethod');
             $newAmount = (float) $cashOut->amountNumeric;
-            $bankService = app(BankAccountService::class);
-            $bankService->reverseDebit(null, $oldMethod, $oldAmount);
-            $bankService->applyDebit(null, $cashOut->paymentMethod, $newAmount);
+
+            if ($oldBankAccountId) {
+                BankAccount::find($oldBankAccountId)?->reverseDebit($oldAmount);
+            } else {
+                app(BankAccountService::class)->reverseDebit(null, $oldMethod, $oldAmount);
+            }
+
+            if ($cashOut->bankAccountId) {
+                BankAccount::find($cashOut->bankAccountId)?->applyDebit($newAmount);
+            } else {
+                app(BankAccountService::class)->applyDebit(null, $cashOut->paymentMethod, $newAmount);
+            }
 
             // ── Project ledger entry ───────────────────────────────────────
             ProjectLedgerEntry::where('referenceId', $cashOut->id)
@@ -106,8 +122,12 @@ class CashOut extends Model
                 $cashOut->projectId, $cashOut->expenseCategory, -$amount
             );
 
-            // ── Bank account balance ───────────────────────────────────────
-            app(BankAccountService::class)->reverseDebit(null, $cashOut->paymentMethod, $amount);
+            // ── Bank account balance ─────────────────────────────────────────
+            if ($cashOut->bankAccountId) {
+                BankAccount::find($cashOut->bankAccountId)?->reverseDebit($amount);
+            } else {
+                app(BankAccountService::class)->reverseDebit(null, $cashOut->paymentMethod, $amount);
+            }
 
             // ── Project ledger entry ───────────────────────────────────────
             ProjectLedgerEntry::where('referenceId', $cashOut->id)
@@ -126,6 +146,7 @@ class CashOut extends Model
         'paidTo',
         'amount',
         'paymentMethod',
+        'bankAccountId',
         'referenceNumber',
         'notes',
         'supplierId',

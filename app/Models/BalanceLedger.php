@@ -18,7 +18,9 @@ class BalanceLedger extends Model
 
     protected $table = 'balance_ledger';
 
-    protected $fillable = ['entityType', 'entityId', 'field', 'before', 'after', 'cashOutId'];
+    protected $fillable = ['entityType', 'entityId', 'field', 'before', 'after', 'reason', 'cashOutId'];
+
+    protected $casts = ['createdAt' => 'datetime'];
 
     public $timestamps = false;
 }

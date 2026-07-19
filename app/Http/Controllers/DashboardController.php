@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BankAccount;
 use App\Models\CashIn;
 use App\Models\CashOut;
 use App\Models\Employee;
@@ -10,15 +11,12 @@ use App\Models\Project;
 use App\Models\Salary;
 use App\Models\Supplier;
 use App\Models\Vendor;
-use App\Traits\HasMainBalance;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
-    use HasMainBalance;
-
     public function index()
     {
         $user = Auth::user();
@@ -40,8 +38,8 @@ class DashboardController extends Controller
             'vendorDue'         => 0,
             'salaryDue'         => 0,
             'cashBalance'       => 0,
-            'mainBalance'       => 0,
-            'mainBalanceAllocated' => 0,
+            'bankBalance'       => 0,
+            'bankAccountCount'  => 0,
         ];
 
         $expenseBreakdown  = [];
@@ -144,10 +142,10 @@ class DashboardController extends Controller
                 ];
             }
 
-            // Main balance: combined paid-in amount across all projects (the
-            // global pool), minus every global-category CashOut.
-            $summary['mainBalanceAllocated'] = $this->totalPaidAmount();
-            $summary['mainBalance'] = $this->availableBalance(null);
+            // Bank balance: combined currentBalance across every active
+            // Bank/Cash/Mobile Banking account (Bank Accounts menu).
+            $summary['bankBalance']      = (float) BankAccount::where('isActive', true)->sum('currentBalance');
+            $summary['bankAccountCount'] = BankAccount::where('isActive', true)->count();
 
         } catch (\Throwable $e) {
             report($e);

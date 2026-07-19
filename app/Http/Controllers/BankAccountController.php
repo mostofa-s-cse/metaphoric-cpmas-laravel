@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BalanceLedger;
 use App\Models\BankAccount;
+use App\Models\CashIn;
+use App\Models\CashOut;
 use App\Services\BankAccountService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
@@ -149,6 +152,7 @@ class BankAccountController extends Controller
             'field'      => 'currentBalance',
             'before'     => $before,
             'after'      => $after,
+            'reason'     => $data['reason'],
             'cashOutId'  => null,
         ]);
 
@@ -158,6 +162,84 @@ class BankAccountController extends Controller
             'account' => $account->fresh(),
             'adjustment' => ['before' => $before, 'after' => $after, 'diff' => $diff],
         ], 'Balance adjusted successfully', self::PATH);
+    }
+
+    // ── History ───────────────────────────────────────────────────────────────
+
+    /**
+     * Paginated transaction history for one account — merges CashOut/CashIn
+     * rows that actually hit this account's balance. Two attribution paths:
+     *  - Direct: CashOut.bankAccountId = this account (office/global expenses,
+     *    EMPLOYEE_SALARY — set explicitly at creation).
+     *  - Inferred: every other row (project-wise CashOut categories, and every
+     *    CashIn — neither has a bankAccountId FK) was still debited/credited
+     *    to *some* account by CashOut/CashIn's model events, via
+     *    BankAccountService's name-then-type-fallback guess. We re-run that
+     *    exact same resolution per row here so the log matches what actually
+     *    moved this account's currentBalance/totalIn/totalOut — otherwise the
+     *    balance changes but no line item explains why.
+     *  - Manual: a BalanceLedger row from the /adjust endpoint — the admin
+     *    correcting currentBalance directly rather than through a CashIn/Out.
+     * Amount is EncryptedFloat-cast so it can't be sorted/paginated at the SQL
+     * level — both sides are pulled in full then merged/sliced in PHP, same
+     * tradeoff SupplierController/VendorController make for encrypted sums.
+     */
+    public function history(Request $request, string $id)
+    {
+        $account = BankAccount::findOrFail($id);
+        $bankService = app(BankAccountService::class);
+
+        $page  = (int) $request->get('page', 1);
+        $limit = (int) $request->get('limit', 10);
+
+        $cashOuts = CashOut::where('bankAccountId', $id)
+            ->orWhereNull('bankAccountId')
+            ->get(['id', 'date', 'paidTo', 'expenseCategory', 'amountNumeric', 'referenceNumber', 'paymentMethod', 'bankAccountId'])
+            ->filter(fn (CashOut $c) => $c->bankAccountId === $id
+                || $bankService->resolveAccountId(null, $c->paymentMethod) === $id)
+            ->map(fn (CashOut $c) => [
+                'id'              => $c->id,
+                'type'            => 'CASH_OUT',
+                'date'            => $c->date,
+                'description'     => $c->paidTo,
+                'category'        => $c->expenseCategory,
+                'amount'          => (float) $c->amountNumeric,
+                'referenceNumber' => $c->referenceNumber,
+            ]);
+
+        $cashIns = CashIn::all(['id', 'date', 'clientName', 'source', 'amountNumeric', 'referenceNumber', 'bankOrCash', 'paymentMethod'])
+            ->filter(fn (CashIn $c) => $bankService->resolveAccountId($c->bankOrCash, $c->paymentMethod) === $id)
+            ->map(fn (CashIn $c) => [
+                'id'              => $c->id,
+                'type'            => 'CASH_IN',
+                'date'            => $c->date,
+                'description'     => $c->clientName,
+                'category'        => $c->source,
+                'amount'          => (float) $c->amountNumeric,
+                'referenceNumber' => $c->referenceNumber,
+            ]);
+
+        $adjustments = BalanceLedger::where('entityType', 'BankAccount')
+            ->where('entityId', $id)
+            ->get(['id', 'before', 'after', 'reason', 'createdAt'])
+            ->map(fn (BalanceLedger $l) => [
+                'id'              => $l->id,
+                'type'            => 'ADJUSTMENT',
+                'date'            => $l->createdAt,
+                'description'     => $l->reason ?: 'Manual balance adjustment',
+                'category'        => 'BALANCE_ADJUSTMENT',
+                'amount'          => (float) $l->after - (float) $l->before,
+                'referenceNumber' => null,
+            ]);
+
+        $merged = $cashOuts->concat($cashIns)->concat($adjustments)->sortByDesc('date')->values();
+        $total  = $merged->count();
+        $items  = $merged->slice(($page - 1) * $limit, $limit)->values();
+
+        return $this->apiPaginated(
+            'history', $items, $total, $page, $limit,
+            'Account history retrieved', self::PATH . "/{$id}/history"
+        );
     }
 
     // ── Reconcile ─────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 const formatVal = (val: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+  `${val < 0 ? '-' : ''}৳ ${Math.abs(val).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // Fetch a full (unpaginated) dataset from a paginated list endpoint by
 // requesting a high limit — this aggregation report needs every record.

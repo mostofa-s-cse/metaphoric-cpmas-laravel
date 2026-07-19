@@ -148,7 +148,8 @@ class TransactionController extends Controller
             'expenseCategory' => 'required|string|in:' . self::CASH_OUT_CATEGORIES,
             'paidTo'          => 'required|string',
             'amount'          => 'required|numeric|min:0',
-            'paymentMethod'   => 'required|string|in:CASH,BANK,CHEQUE,MOBILE_BANKING',
+            'paymentMethod'   => 'nullable|string|in:CASH,BANK,CHEQUE,MOBILE_BANKING',
+            'bankAccountId'   => 'nullable|uuid|exists:bank_accounts,id',
             'referenceNumber' => 'nullable|string',
             'notes'           => 'nullable|string',
             'supplierId'      => 'nullable|uuid|exists:suppliers,id',
@@ -165,19 +166,30 @@ class TransactionController extends Controller
         $projectId  = $data['projectId'] ?? null;
         $category   = $data['expenseCategory'];
 
-        // RULE: Office / overhead expenses NEVER draw from a project's own pool.
-        // They always go to the global company pool. The projectId tag is still
-        // stored on the row (for reporting / reference) but the balance check
-        // and the snapshot deduction both use null (= global pool).
+        // RULE: Office / overhead expenses (and EMPLOYEE_SALARY) NEVER draw
+        // from a project's own pool or the company-wide Main Balance pool —
+        // they draw from a specific Bank Account instead, validated against
+        // that account's own currentBalance.
         $isOfficeExpense = \App\Models\ExpenseCategory::isOfficeExpense($category);
-        $balanceProjectId = $isOfficeExpense ? null : $projectId;
 
-        $available = $this->availableBalance($balanceProjectId, $category);
-        if ($amount > $available) {
-            return $this->apiBadRequest(
-                $this->insufficientBalanceMessage($available, $balanceProjectId, $category),
-                self::PATH_OUT
-            );
+        if ($isOfficeExpense) {
+            [$error, $account] = $this->validateBankAccountForExpense($data['bankAccountId'] ?? null, $amount);
+            if ($error) {
+                return $this->apiBadRequest($error, self::PATH_OUT);
+            }
+            $data['paymentMethod'] = $account->accountType;
+        } else {
+            if (empty($data['paymentMethod'])) {
+                return $this->apiBadRequest('Payment method is required', self::PATH_OUT);
+            }
+
+            $available = $this->availableBalance($projectId, $category);
+            if ($amount > $available) {
+                return $this->apiBadRequest(
+                    $this->insufficientBalanceMessage($available, $projectId, $category),
+                    self::PATH_OUT
+                );
+            }
         }
 
         $cashOut = CashOut::create($data);
@@ -199,26 +211,48 @@ class TransactionController extends Controller
             'expenseCategory' => 'sometimes|string|in:' . self::CASH_OUT_CATEGORIES,
             'paidTo'          => 'sometimes|string',
             'amount'          => 'sometimes|numeric|min:0',
-            'paymentMethod'   => 'sometimes|string|in:CASH,BANK,CHEQUE,MOBILE_BANKING',
+            'paymentMethod'   => 'nullable|string|in:CASH,BANK,CHEQUE,MOBILE_BANKING',
+            'bankAccountId'   => 'nullable|uuid|exists:bank_accounts,id',
             'referenceNumber' => 'nullable|string',
             'notes'           => 'nullable|string',
         ]);
 
-        $newAmount    = isset($data['amount']) ? (float) $data['amount'] : (float) $cashOut->amount;
+        $newAmount    = isset($data['amount']) ? (float) $data['amount'] : (float) $cashOut->amountNumeric;
         $newProjectId = array_key_exists('projectId', $data) ? $data['projectId'] : $cashOut->projectId;
         $newCategory  = $data['expenseCategory'] ?? $cashOut->expenseCategory;
 
-        // RULE: Office expenses always draw from global pool — the projectId tag
-        // may remain on the row for reference, but the balance check must use null.
-        $isOfficeExpense  = \App\Models\ExpenseCategory::isOfficeExpense($newCategory);
-        $balanceProjectId = $isOfficeExpense ? null : $newProjectId;
+        $isOfficeExpense = \App\Models\ExpenseCategory::isOfficeExpense($newCategory);
 
-        $available = $this->availableBalance($balanceProjectId, $newCategory, $cashOut->id);
-        if ($newAmount > $available) {
-            return $this->apiBadRequest(
-                $this->insufficientBalanceMessage($available, $balanceProjectId, $newCategory),
-                self::PATH_OUT
-            );
+        if ($isOfficeExpense) {
+            $bankAccountId = array_key_exists('bankAccountId', $data) ? $data['bankAccountId'] : $cashOut->bankAccountId;
+            $account = $bankAccountId ? \App\Models\BankAccount::find($bankAccountId) : null;
+            if (!$bankAccountId || !$account || !$account->isActive) {
+                return $this->apiBadRequest('Selected bank account is not available', self::PATH_OUT);
+            }
+
+            // Staying on the same account: the row's current amount has
+            // already been debited from it, so add it back before comparing.
+            $oldAmount = (float) $cashOut->amountNumeric;
+            $effectiveAvailable = (float) $account->currentBalance
+                + ($bankAccountId === $cashOut->bankAccountId ? $oldAmount : 0);
+
+            if ($newAmount > $effectiveAvailable) {
+                return $this->apiBadRequest(
+                    "Insufficient balance in {$account->name}. Available: " . number_format($effectiveAvailable, 2),
+                    self::PATH_OUT
+                );
+            }
+
+            $data['bankAccountId'] = $account->id;
+            $data['paymentMethod'] = $account->accountType;
+        } else {
+            $available = $this->availableBalance($newProjectId, $newCategory, $cashOut->id);
+            if ($newAmount > $available) {
+                return $this->apiBadRequest(
+                    $this->insufficientBalanceMessage($available, $newProjectId, $newCategory),
+                    self::PATH_OUT
+                );
+            }
         }
 
         $cashOut->update($data);

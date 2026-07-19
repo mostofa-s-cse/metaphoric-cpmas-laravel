@@ -20,10 +20,11 @@ import { useResourceList } from '@/hooks/useResourceList';
 import { useCrudMutations } from '@/hooks/useCrudMutations';
 
 import {
-  FolderKanban, Plus, Search, MapPin, Calendar, DollarSign,
+  FolderKanban, Plus, Search, MapPin, Calendar,
   TrendingUp, Percent, X, Trash2, Edit2, FileText, Hammer,
   Users, HardHat, Loader2, TrendingDown, Info, Briefcase
 } from 'lucide-react';
+import { TakaIcon } from '@/Components/ui/TakaIcon';
 
 // Replicate Zod schemas locally since importing typescript schemas might have path issues
 const projectStatusEnum = z.enum(['PLANNING', 'RUNNING', 'COMPLETED', 'ARCHIVED']);
@@ -356,7 +357,8 @@ export default function ProjectsPage() {
   };
 
   const formatCurrencyLocal = (amount: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+    const sign = amount < 0 ? '-' : '';
+    return `${sign}৳ ${Math.abs(amount).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const getProjectTypeLabel = (type: string) => {
@@ -614,7 +616,7 @@ export default function ProjectsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-xl">
                     <div className="flex items-center gap-2 text-slate-400 text-xs font-semibold mb-1">
-                      <DollarSign className="h-4 w-4 text-cyan-400" />
+                      <TakaIcon className="h-4 w-4 text-cyan-400" />
                       Project Revenue
                     </div>
                     <span className="text-base font-bold text-slate-100">
