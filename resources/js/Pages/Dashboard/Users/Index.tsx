@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { Head, usePage } from '@inertiajs/react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import axios from 'axios';
 
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Button } from '@/Components/ui/Button';
@@ -17,18 +18,21 @@ import {
   Shield, Plus, Search, Edit2, Trash2, X, Loader2, UserCheck, Mail, Key, Crown, Users2, UserCog, Lock
 } from 'lucide-react';
 
+// Role is any dynamic role name (legacy or custom, created via Roles &
+// Permissions) — validated against the live list fetched from /api/roles,
+// not a fixed enum.
 const createUserSchema = z.object({
   fullName: z.string().min(2, 'Full name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
-  role: z.enum(['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR']),
+  role: z.string().min(1, 'Role is required'),
 });
 
 const editUserSchema = z.object({
   fullName: z.string().min(2, 'Full name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
   password: z.string().optional(),
-  role: z.enum(['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR']),
+  role: z.string().min(1, 'Role is required'),
 });
 
 type CreateUserFormData = z.infer<typeof createUserSchema>;
@@ -38,9 +42,20 @@ interface ApiUser {
   id: string;
   fullName: string;
   email: string;
-  role: 'SUPER_ADMIN' | 'ADMIN' | 'ACCOUNTANT' | 'PROJECT_MANAGER' | 'DATA_ENTRY_OPERATOR';
+  role: string;
   createdAt: string;
 }
+
+interface AvailableRole {
+  id: number;
+  name: string;
+  isLegacy: boolean;
+}
+
+const DEFAULT_ROLE_STYLE = {
+  icon: Shield,
+  badge: 'bg-slate-500/10 text-slate-400 border border-slate-500/20',
+};
 
 const ROLE_CONFIG = {
   SUPER_ADMIN: {
@@ -97,6 +112,11 @@ export default function UsersPage() {
   const {
     items: users, isFetching: isLoading, refetch: fetchUsers,
   } = useResourceList<ApiUser>('/api/users', { listKey: 'users' });
+
+  const [availableRoles, setAvailableRoles] = useState<AvailableRole[]>([]);
+  useEffect(() => {
+    axios.get('/api/roles').then((res) => setAvailableRoles(res.data.data.roles)).catch(() => {});
+  }, []);
 
   const { create: createUser, update: updateUser, remove: removeUser } =
     useCrudMutations('/api/users', handlePromise, fetchUsers);
@@ -294,7 +314,7 @@ export default function UsersPage() {
                   </tr>
                 ) : (
                   filteredUsers.map((u) => {
-                    const roleConf = ROLE_CONFIG[u.role];
+                    const roleConf = ROLE_CONFIG[u.role as keyof typeof ROLE_CONFIG] ?? { ...DEFAULT_ROLE_STYLE, label: u.role };
                     const RoleIcon = roleConf.icon;
                     const isSelf = u.id === currentUser?.id;
 
@@ -441,19 +461,17 @@ export default function UsersPage() {
                     {...activeForm.register('role')}
                     error={activeForm.formState.errors.role?.message}
                   >
-                    {currentUser?.role === 'SUPER_ADMIN' && (
-                      <option value="SUPER_ADMIN" className="bg-slate-900 text-slate-200">Super Admin — Full Access</option>
-                    )}
-                    <option value="ADMIN" className="bg-slate-900 text-slate-200">Admin — Project & Financial Management</option>
-                    <option value="ACCOUNTANT" className="bg-slate-900 text-slate-200">Accountant — Financial Records</option>
-                    <option value="PROJECT_MANAGER" className="bg-slate-900 text-slate-200">Project Manager — Construction Ops</option>
-                    <option value="DATA_ENTRY_OPERATOR" className="bg-slate-900 text-slate-200">Data Entry Operator — Basic Access</option>
+                    {availableRoles.map((r) => (
+                      <option key={r.id} value={r.name} className="bg-slate-900 text-slate-200">
+                        {ROLE_CONFIG[r.name as keyof typeof ROLE_CONFIG]?.label ?? r.name}
+                        {!r.isLegacy ? ' (Custom)' : ''}
+                      </option>
+                    ))}
                   </Select>
                   {(() => {
-                    const role = (modalMode === 'create' ? createForm.watch('role') : editForm.watch('role')) as keyof typeof ROLE_CONFIG;
-                    return role && ROLE_CONFIG[role] ? (
-                      <p className="text-[10px] text-slate-500 mt-1.5 ml-1">{ROLE_CONFIG[role].desc}</p>
-                    ) : null;
+                    const role = modalMode === 'create' ? createForm.watch('role') : editForm.watch('role');
+                    const desc = role ? ROLE_CONFIG[role as keyof typeof ROLE_CONFIG]?.desc : null;
+                    return desc ? <p className="text-[10px] text-slate-500 mt-1.5 ml-1">{desc}</p> : null;
                   })()}
                 </div>
 

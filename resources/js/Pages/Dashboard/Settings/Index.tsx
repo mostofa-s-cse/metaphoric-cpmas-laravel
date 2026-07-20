@@ -8,6 +8,7 @@ import { z } from 'zod';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { usePermissions } from '@/hooks/usePermissions';
 
 import {
   Settings,
@@ -101,7 +102,8 @@ export default function SettingsPage() {
   const [pendingAvatar, setPendingAvatar] = useState<string | null>(null);
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
 
-  const isAdmin = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
+  const { canTab } = usePermissions();
+  const canSeeSmtp = canTab('settings', 'smtp');
 
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
   const [isUpdatingSetting, setIsUpdatingSetting] = useState(false);
@@ -117,7 +119,7 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!canSeeSmtp) return;
 
     let cancelled = false;
     setIsLoadingSettings(true);
@@ -145,7 +147,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAdmin]);
+  }, [canSeeSmtp]);
 
   const onSmtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -343,7 +345,7 @@ export default function SettingsPage() {
               {[
                 { id: 'profile' as const, label: 'Profile', icon: User },
                 { id: 'security' as const, label: 'Security', icon: Key },
-                ...(isAdmin ? [{ id: 'smtp' as const, label: 'Email SMTP Config', icon: Settings }] : []),
+                ...(canSeeSmtp ? [{ id: 'smtp' as const, label: 'Email SMTP Config', icon: Settings }] : []),
                 { id: 'about' as const, label: 'System Info', icon: Info },
               ].map((tab) => {
                 const TabIcon = tab.icon;
@@ -488,7 +490,7 @@ export default function SettingsPage() {
             )}
 
             {/* SMTP Config Tab */}
-            {activeTab === 'smtp' && isAdmin && (
+            {activeTab === 'smtp' && canSeeSmtp && (
               <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
                 <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2 mb-2">
                   <Settings className="h-4 w-4 text-cyan-400" />

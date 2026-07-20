@@ -18,6 +18,7 @@ import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
 import { useResourceList } from '@/hooks/useResourceList';
 import { useCrudMutations } from '@/hooks/useCrudMutations';
+import { usePermissions } from '@/hooks/usePermissions';
 
 import {
   Users2, Plus, Search, Building, X, Loader2, UserPlus, CreditCard, Trash2, Edit2,
@@ -93,7 +94,19 @@ export default function EmployeesPage() {
   const user = auth?.user;
   const { toasts, removeToast, success, error, handlePromise } = useToast();
 
+  const { canTab } = usePermissions();
+  const TABS = [
+    { key: 'expense' as const, canSee: canTab('employees', 'expense') },
+    { key: 'employees' as const, canSee: canTab('employees', 'employees') },
+    { key: 'salary' as const, canSee: canTab('employees', 'salary') },
+  ];
   const [activeTab, setActiveTab] = useState<'expense' | 'employees' | 'salary'>('employees');
+  useEffect(() => {
+    if (TABS.find((t) => t.key === activeTab)?.canSee) return;
+    const firstAllowed = TABS.find((t) => t.canSee);
+    if (firstAllowed) setActiveTab(firstAllowed.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [salaryMonthFilter, setSalaryMonthFilter] = useState(''); // '' = all months
   const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
 
@@ -509,36 +522,42 @@ export default function EmployeesPage() {
 
         {/* Tabs */}
         <div className="flex border-b border-slate-800 gap-4">
-          <button
-            onClick={() => setActiveTab('expense')}
-            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === 'expense'
-                ? 'border-cyan-500 text-cyan-400'
-                : 'border-transparent text-slate-500 hover:text-slate-350'
-            }`}
-          >
-            Expense
-          </button>
-          <button
-            onClick={() => setActiveTab('employees')}
-            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === 'employees'
-                ? 'border-cyan-500 text-cyan-400'
-                : 'border-transparent text-slate-500 hover:text-slate-350'
-            }`}
-          >
-            Employees ({employees.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('salary')}
-            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === 'salary'
-                ? 'border-cyan-500 text-cyan-400'
-                : 'border-transparent text-slate-500 hover:text-slate-350'
-            }`}
-          >
-            Employee Salary
-          </button>
+          {TABS.find((t) => t.key === 'expense')!.canSee && (
+            <button
+              onClick={() => setActiveTab('expense')}
+              className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'expense'
+                  ? 'border-cyan-500 text-cyan-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-350'
+              }`}
+            >
+              Expense
+            </button>
+          )}
+          {TABS.find((t) => t.key === 'employees')!.canSee && (
+            <button
+              onClick={() => setActiveTab('employees')}
+              className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'employees'
+                  ? 'border-cyan-500 text-cyan-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-350'
+              }`}
+            >
+              Employees ({employees.length})
+            </button>
+          )}
+          {TABS.find((t) => t.key === 'salary')!.canSee && (
+            <button
+              onClick={() => setActiveTab('salary')}
+              className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'salary'
+                  ? 'border-cyan-500 text-cyan-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-350'
+              }`}
+            >
+              Employee Salary
+            </button>
+          )}
         </div>
 
         {/* Tab: Expense */}

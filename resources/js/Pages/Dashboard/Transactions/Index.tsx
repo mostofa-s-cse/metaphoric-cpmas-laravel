@@ -17,6 +17,7 @@ import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
 import { useResourceList } from '@/hooks/useResourceList';
 import { useCrudMutations } from '@/hooks/useCrudMutations';
+import { usePermissions } from '@/hooks/usePermissions';
 
 import {
   ArrowUpDown, Plus, Search, ArrowUpRight, ArrowDownRight, Calendar, X, Loader2, Trash2
@@ -129,7 +130,18 @@ export default function TransactionsPage() {
   const user = auth?.user;
   const { toasts, removeToast, success, error, handlePromise } = useToast();
 
+  const { canTab } = usePermissions();
+  const TABS = [
+    { key: 'cashin' as const, canSee: canTab('transactions', 'collections') },
+    { key: 'cashout' as const, canSee: canTab('transactions', 'expenses') },
+  ];
   const [activeTab, setActiveTab] = useState<'cashin' | 'cashout'>('cashin');
+  useEffect(() => {
+    if (TABS.find((t) => t.key === activeTab)?.canSee) return;
+    const firstAllowed = TABS.find((t) => t.canSee);
+    if (firstAllowed) setActiveTab(firstAllowed.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [projectFilter, setProjectFilter] = useState('ALL');
   const [summary, setSummary] = useState<TransactionSummary | null>(null);
 
@@ -445,19 +457,23 @@ export default function TransactionsPage() {
 
           {user && user.role !== 'PROJECT_MANAGER' && (
             <div className="flex gap-2">
-              <Button
-                onClick={handleOpenCashIn}
-                icon={<Plus className="h-4 w-4" />}
-              >
-                Record Cash In
-              </Button>
-              <Button
-                onClick={handleOpenCashOut}
-                variant="secondary"
-                icon={<Plus className="h-4 w-4" />}
-              >
-                Record Cash Out
-              </Button>
+              {TABS.find((t) => t.key === 'cashin')!.canSee && (
+                <Button
+                  onClick={handleOpenCashIn}
+                  icon={<Plus className="h-4 w-4" />}
+                >
+                  Record Cash In
+                </Button>
+              )}
+              {TABS.find((t) => t.key === 'cashout')!.canSee && (
+                <Button
+                  onClick={handleOpenCashOut}
+                  variant="secondary"
+                  icon={<Plus className="h-4 w-4" />}
+                >
+                  Record Cash Out
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -545,32 +561,36 @@ export default function TransactionsPage() {
 
         {/* Tabs */}
         <div className="flex border-b border-slate-800 gap-4">
-          <button
-            onClick={() => {
-              setActiveTab('cashin');
-              setSearchTerm('');
-            }}
-            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === 'cashin'
-                ? 'border-cyan-500 text-cyan-400'
-                : 'border-transparent text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            Collections / Cash In
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('cashout');
-              setSearchTerm('');
-            }}
-            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === 'cashout'
-                ? 'border-cyan-500 text-cyan-400'
-                : 'border-transparent text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            Expenses / Cash Out
-          </button>
+          {TABS.find((t) => t.key === 'cashin')!.canSee && (
+            <button
+              onClick={() => {
+                setActiveTab('cashin');
+                setSearchTerm('');
+              }}
+              className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'cashin'
+                  ? 'border-cyan-500 text-cyan-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              Collections / Cash In
+            </button>
+          )}
+          {TABS.find((t) => t.key === 'cashout')!.canSee && (
+            <button
+              onClick={() => {
+                setActiveTab('cashout');
+                setSearchTerm('');
+              }}
+              className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'cashout'
+                  ? 'border-cyan-500 text-cyan-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              Expenses / Cash Out
+            </button>
+          )}
         </div>
 
         {/* Filters */}

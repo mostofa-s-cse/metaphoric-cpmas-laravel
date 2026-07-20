@@ -6,6 +6,7 @@ import { Settings, Image, FileText, Grid, FolderKanban, Users, Shield, MessageSq
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
+import { usePermissions } from '@/hooks/usePermissions';
 
 import { PageContentTab } from './components/PageContentTab';
 import { ServicesTab } from './components/ServicesTab';
@@ -16,10 +17,11 @@ import { TestimonialsTab } from './components/TestimonialsTab';
 import { FaqsTab } from './components/FaqsTab';
 
 export default function WebsiteManagementPage() {
+  const { canTab } = usePermissions();
   const [activeTab, setActiveTab] = useState('settings');
   const toast = useToast();
 
-  const tabs = [
+  const allTabs = [
     { id: 'settings', label: 'General Settings', icon: Settings },
     { id: 'sections', label: 'Hero Section', icon: Image },
     { id: 'pageContent', label: 'Page Content', icon: FileText },
@@ -30,6 +32,13 @@ export default function WebsiteManagementPage() {
     { id: 'testimonials', label: 'Testimonials', icon: MessageSquare },
     { id: 'faqs', label: 'FAQs', icon: HelpCircle },
   ];
+  const tabs = allTabs.filter((tab) => canTab('website', tab.id));
+
+  useEffect(() => {
+    if (tabs.some((t) => t.id === activeTab)) return;
+    if (tabs[0]) setActiveTab(tabs[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AuthenticatedLayout>

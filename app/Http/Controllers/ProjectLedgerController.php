@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExpenseCategory;
 use App\Models\ProjectLedgerEntry;
 use App\Models\Project;
 use App\Traits\ApiResponse;
@@ -63,8 +64,18 @@ class ProjectLedgerController extends Controller
         $base = ProjectLedgerEntry::forProject($projectId)
             ->betweenDates($startDate, $endDate);
 
+        // Office/overhead categories (and EMPLOYEE_SALARY) are recorded here
+        // for reference only — CashOut::booted() writes this row whenever a
+        // project is merely tagged on the expense, but the money always
+        // comes from a Bank Account, never this project's own pool
+        // (HasMainBalance::availableBalance() / BalanceSnapshotService
+        // already enforce that on the real budget-tracking side). Counting
+        // them in totalOut/netBalance made a project's balance look spent
+        // down by expenses that never touched it.
+        $officeCategories = ExpenseCategory::where('isOfficeExpense', true)->pluck('code');
+
         $totalIn  = (float) (clone $base)->cashIns()->sum('amount');
-        $totalOut = (float) (clone $base)->cashOuts()->sum('amount');
+        $totalOut = (float) (clone $base)->cashOuts()->whereNotIn('expenseCategory', $officeCategories)->sum('amount');
 
         // Breakdown of cash-outs by expense category
         $categoryBreakdown = (clone $base)->cashOuts()

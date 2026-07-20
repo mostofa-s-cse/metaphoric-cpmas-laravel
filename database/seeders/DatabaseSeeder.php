@@ -41,5 +41,8 @@ class DatabaseSeeder extends Seeder
 
         // 3. Demo dataset — projects, supplier, vendors, bank account, labours, employees
         $this->call(DemoDataSeeder::class);
+
+        // 4. Roles & permissions — module/tab access control (spatie/laravel-permission)
+        $this->call(RolesAndPermissionsSeeder::class);
     }
 }

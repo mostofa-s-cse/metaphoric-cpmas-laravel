@@ -18,6 +18,7 @@ import { ToastContainer } from '@/Components/ui/ToastContainer';
 import { useToast } from '@/hooks/useToast';
 import { useResourceList } from '@/hooks/useResourceList';
 import { useCrudMutations } from '@/hooks/useCrudMutations';
+import { usePermissions } from '@/hooks/usePermissions';
 
 import {
   HardHat, Plus, Search, UserPlus, Users2, Trash2, Loader2, CalendarCheck, Check, X, AlertCircle,
@@ -57,7 +58,19 @@ export default function LaboursPage() {
   const user = auth?.user;
   const { toasts, removeToast, error, handlePromise } = useToast();
 
+  const { canTab } = usePermissions();
+  const TABS = [
+    { key: 'labour' as const, canSee: canTab('labour', 'registry') },
+    { key: 'attendance' as const, canSee: canTab('labour', 'attendance') },
+    { key: 'wages' as const, canSee: canTab('labour', 'wages') },
+  ];
   const [activeTab, setActiveTab] = useState<'labour' | 'attendance' | 'wages'>('labour');
+  useEffect(() => {
+    if (TABS.find((t) => t.key === activeTab)?.canSee) return;
+    const firstAllowed = TABS.find((t) => t.canSee);
+    if (firstAllowed) setActiveTab(firstAllowed.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [wagesProjectFilter, setWagesProjectFilter] = useState('ALL');
   const [wagesMonthFilter, setWagesMonthFilter] = useState(''); // '' = all months
 
@@ -427,36 +440,42 @@ export default function LaboursPage() {
 
         {/* Tabs */}
         <div className="flex border-b border-slate-800 gap-4">
-          <button
-            onClick={() => setActiveTab('labour')}
-            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === 'labour'
-                ? 'border-cyan-500 text-cyan-400'
-                : 'border-transparent text-slate-500 hover:text-slate-350'
-            }`}
-          >
-            Labour Registry ({labours.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('attendance')}
-            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === 'attendance'
-                ? 'border-cyan-500 text-cyan-400'
-                : 'border-transparent text-slate-500 hover:text-slate-350'
-            }`}
-          >
-            Daily Labor Attendance
-          </button>
-          <button
-            onClick={() => setActiveTab('wages')}
-            className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === 'wages'
-                ? 'border-cyan-500 text-cyan-400'
-                : 'border-transparent text-slate-500 hover:text-slate-350'
-            }`}
-          >
-            Labour Wages
-          </button>
+          {TABS.find((t) => t.key === 'labour')!.canSee && (
+            <button
+              onClick={() => setActiveTab('labour')}
+              className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'labour'
+                  ? 'border-cyan-500 text-cyan-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-350'
+              }`}
+            >
+              Labour Registry ({labours.length})
+            </button>
+          )}
+          {TABS.find((t) => t.key === 'attendance')!.canSee && (
+            <button
+              onClick={() => setActiveTab('attendance')}
+              className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'attendance'
+                  ? 'border-cyan-500 text-cyan-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-350'
+              }`}
+            >
+              Daily Labor Attendance
+            </button>
+          )}
+          {TABS.find((t) => t.key === 'wages')!.canSee && (
+            <button
+              onClick={() => setActiveTab('wages')}
+              className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'wages'
+                  ? 'border-cyan-500 text-cyan-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-350'
+              }`}
+            >
+              Labour Wages
+            </button>
+          )}
         </div>
 
         {/* Tab 1: Labour Registry */}

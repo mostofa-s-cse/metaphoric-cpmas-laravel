@@ -61,7 +61,9 @@ class UserController extends Controller
             'email' => 'required|email|unique:users,email',
             'fullName' => 'required|string',
             'password' => 'required|string|min:6',
-            'role' => 'required|string|in:SUPER_ADMIN,ADMIN,ACCOUNTANT,PROJECT_MANAGER,DATA_ENTRY_OPERATOR',
+            // Any role that exists in the dynamic roles table — legacy
+            // (SUPER_ADMIN etc) or a custom one created via Roles & Permissions.
+            'role' => 'required|string|exists:roles,name',
         ]);
 
         $user = User::create([
@@ -70,6 +72,9 @@ class UserController extends Controller
             'role' => $data['role'],
             'passwordHash' => Hash::make($data['password']),
         ]);
+        // users.role stays the legacy display/action-check string; syncRoles()
+        // attaches the real spatie Role that actually carries permissions.
+        $user->syncRoles([$data['role']]);
 
         return $this->apiCreated(
             ['user' => $user->only(['id', 'email', 'fullName', 'role', 'created_at'])],
@@ -92,7 +97,7 @@ class UserController extends Controller
         $data = $request->validate([
             'email' => "sometimes|email|unique:users,email,{$id}",
             'fullName' => 'sometimes|string',
-            'role' => 'sometimes|string|in:SUPER_ADMIN,ADMIN,ACCOUNTANT,PROJECT_MANAGER,DATA_ENTRY_OPERATOR',
+            'role' => 'sometimes|string|exists:roles,name',
             'newPassword' => 'nullable|string|min:6',
             'profileImage' => 'nullable|string',
         ]);
@@ -106,7 +111,11 @@ class UserController extends Controller
         }
         unset($data['newPassword']);
 
+        $newRole = $data['role'] ?? null;
         $user->update($data);
+        if ($newRole !== null) {
+            $user->syncRoles([$newRole]);
+        }
 
         return $this->apiSuccess(
             ['user' => $user->fresh()->only(['id', 'email', 'fullName', 'profileImage', 'role', 'updated_at'])],

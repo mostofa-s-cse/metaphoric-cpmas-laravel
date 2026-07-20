@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -30,37 +31,38 @@ interface NavItem {
   href: string;
   routeName: string;
   icon: React.ComponentType<{ className?: string }>;
-  roles: string[];
+  moduleKey: string;
+  tabKey?: string;
   children?: NavItem[];
 }
 
 const navItems: NavItem[] = [
-  { name: 'Dashboard',         href: '/dashboard',             routeName: 'dashboard',           icon: LayoutDashboard, roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
-  { name: 'Projects',          href: '/dashboard/projects',    routeName: 'dashboard.projects',  icon: FolderKanban,    roles: ['SUPER_ADMIN'] },
-  { name: 'Suppliers',         href: '/dashboard/suppliers',   routeName: 'dashboard.suppliers', icon: Truck,           roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
-  { name: 'Vendor',            href: '/dashboard/vendor',      routeName: 'dashboard.vendors',   icon: Briefcase,       roles: ['SUPER_ADMIN', 'ADMIN', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
-  { name: 'Office Management', href: '/dashboard/employees',   routeName: 'dashboard.employees', icon: Users2,          roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
-  { name: 'Labour Management', href: '/dashboard/labour',      routeName: 'dashboard.labour',    icon: HardHat,         roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
-  { name: 'Materials',         href: '/dashboard/materials',   routeName: 'dashboard.materials', icon: PackageSearch,   roles: ['SUPER_ADMIN', 'ADMIN', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
-  { name: 'Transactions',      href: '/dashboard/transactions',routeName: 'dashboard.transactions', icon: ArrowUpDown,  roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
-  { name: 'Bank Accounts',     href: '/dashboard/bank-accounts',routeName: 'dashboard.bank-accounts', icon: Landmark,   roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'] },
-  { name: 'Documents',         href: '/dashboard/documents',   routeName: 'dashboard.documents', icon: FileText,       roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
+  { name: 'Dashboard',         href: '/dashboard',             routeName: 'dashboard',           icon: LayoutDashboard, moduleKey: 'dashboard' },
+  { name: 'Projects',          href: '/dashboard/projects',    routeName: 'dashboard.projects',  icon: FolderKanban,    moduleKey: 'projects' },
+  { name: 'Suppliers',         href: '/dashboard/suppliers',   routeName: 'dashboard.suppliers', icon: Truck,           moduleKey: 'suppliers' },
+  { name: 'Vendor',            href: '/dashboard/vendor',      routeName: 'dashboard.vendors',   icon: Briefcase,       moduleKey: 'vendor' },
+  { name: 'Office Management', href: '/dashboard/employees',   routeName: 'dashboard.employees', icon: Users2,          moduleKey: 'employees' },
+  { name: 'Labour Management', href: '/dashboard/labour',      routeName: 'dashboard.labour',    icon: HardHat,         moduleKey: 'labour' },
+  { name: 'Materials',         href: '/dashboard/materials',   routeName: 'dashboard.materials', icon: PackageSearch,   moduleKey: 'materials' },
+  { name: 'Transactions',      href: '/dashboard/transactions',routeName: 'dashboard.transactions', icon: ArrowUpDown,  moduleKey: 'transactions' },
+  { name: 'Bank Accounts',     href: '/dashboard/bank-accounts',routeName: 'dashboard.bank-accounts', icon: Landmark,   moduleKey: 'bank-accounts' },
+  { name: 'Documents',         href: '/dashboard/documents',   routeName: 'dashboard.documents', icon: FileText,       moduleKey: 'documents' },
   {
-    name: 'Reports', href: '/dashboard/reports', routeName: 'dashboard.reports', icon: TrendingUp, roles: ['SUPER_ADMIN'],
+    name: 'Reports', href: '/dashboard/reports', routeName: 'dashboard.reports', icon: TrendingUp, moduleKey: 'reports',
     children: [
-      { name: 'Financial Statement', href: '/dashboard/reports',           routeName: 'dashboard.reports',           icon: TrendingUp, roles: ['SUPER_ADMIN'] },
-      { name: 'Project Report',      href: '/dashboard/reports/projects',  routeName: 'dashboard.reports.projects',  icon: TrendingUp, roles: ['SUPER_ADMIN'] },
-      { name: 'Vendor Report',       href: '/dashboard/reports/vendors',   routeName: 'dashboard.reports.vendors',   icon: TrendingUp, roles: ['SUPER_ADMIN'] },
-      { name: 'Supplier Report',     href: '/dashboard/reports/suppliers', routeName: 'dashboard.reports.suppliers', icon: TrendingUp, roles: ['SUPER_ADMIN'] },
-      { name: 'Material Report',     href: '/dashboard/reports/materials', routeName: 'dashboard.reports.materials', icon: TrendingUp, roles: ['SUPER_ADMIN'] },
-      { name: 'Employee Report',     href: '/dashboard/reports/employees', routeName: 'dashboard.reports.employees', icon: TrendingUp, roles: ['SUPER_ADMIN'] },
+      { name: 'Financial Statement', href: '/dashboard/reports',           routeName: 'dashboard.reports',           icon: TrendingUp, moduleKey: 'reports', tabKey: 'financial' },
+      { name: 'Project Report',      href: '/dashboard/reports/projects',  routeName: 'dashboard.reports.projects',  icon: TrendingUp, moduleKey: 'reports', tabKey: 'projects' },
+      { name: 'Vendor Report',       href: '/dashboard/reports/vendors',   routeName: 'dashboard.reports.vendors',   icon: TrendingUp, moduleKey: 'reports', tabKey: 'vendors' },
+      { name: 'Supplier Report',     href: '/dashboard/reports/suppliers', routeName: 'dashboard.reports.suppliers', icon: TrendingUp, moduleKey: 'reports', tabKey: 'suppliers' },
+      { name: 'Material Report',     href: '/dashboard/reports/materials', routeName: 'dashboard.reports.materials', icon: TrendingUp, moduleKey: 'reports', tabKey: 'materials' },
+      { name: 'Employee Report',     href: '/dashboard/reports/employees', routeName: 'dashboard.reports.employees', icon: TrendingUp, moduleKey: 'reports', tabKey: 'employees' },
     ],
   },
-  { name: 'Website Management',href: '/dashboard/website',     routeName: 'dashboard.website',   icon: Globe,           roles: ['SUPER_ADMIN', 'ADMIN'] },
-  { name: 'User Management',   href: '/dashboard/users',       routeName: 'dashboard.users',     icon: ShieldCheck,     roles: ['SUPER_ADMIN'] },
-  { name: 'Audit Logs',        href: '/dashboard/audit-logs',  routeName: 'dashboard.audit-logs',icon: History,         roles: ['SUPER_ADMIN', 'ADMIN'] },
-  { name: 'Contacts',          href: '/dashboard/contacts',    routeName: 'dashboard.contacts',  icon: MessageSquare,   roles: ['SUPER_ADMIN', 'ADMIN', 'PROJECT_MANAGER'] },
-  { name: 'Settings',          href: '/dashboard/settings',    routeName: 'dashboard.settings',  icon: Settings,        roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
+  { name: 'Website Management',href: '/dashboard/website',     routeName: 'dashboard.website',   icon: Globe,           moduleKey: 'website' },
+  { name: 'User Management',   href: '/dashboard/users',       routeName: 'dashboard.users',     icon: ShieldCheck,     moduleKey: 'users' },
+  { name: 'Audit Logs',        href: '/dashboard/audit-logs',  routeName: 'dashboard.audit-logs',icon: History,         moduleKey: 'audit-logs' },
+  { name: 'Contacts',          href: '/dashboard/contacts',    routeName: 'dashboard.contacts',  icon: MessageSquare,   moduleKey: 'contacts' },
+  { name: 'Settings',          href: '/dashboard/settings',    routeName: 'dashboard.settings',  icon: Settings,        moduleKey: 'settings' },
 ];
 
 interface Props {
@@ -121,7 +123,17 @@ export default function AuthenticatedLayout({ children, header }: Props) {
   }, [notificationsOpen]);
 
   const userRole: string = user?.role || 'DATA_ENTRY_OPERATOR';
-  const allowedNavItems = navItems.filter((item) => item.roles.includes(userRole));
+  const { canModule, canTab } = usePermissions();
+  const allowedNavItems = navItems.filter((item) => canModule(item.moduleKey));
+
+  // Roles & Permissions admin — deliberately gated by the legacy
+  // role:SUPER_ADMIN check only, not the dynamic module system (see
+  // routes/web.php's dashboard.roles route note).
+  if (userRole === 'SUPER_ADMIN') {
+    allowedNavItems.push({
+      name: 'Roles & Permissions', href: '/dashboard/roles', routeName: 'dashboard.roles', icon: ShieldCheck, moduleKey: '__roles',
+    });
+  }
 
   function isActive(item: NavItem) {
     if (item.href === '/dashboard') return currentPath === '/dashboard';
@@ -146,7 +158,7 @@ export default function AuthenticatedLayout({ children, header }: Props) {
 
           if (item.children && item.children.length > 0) {
             const expanded = expandedMenus.has(item.name);
-            const allowedChildren = item.children.filter((c) => c.roles.includes(userRole));
+            const allowedChildren = item.children.filter((c) => canTab(c.moduleKey, c.tabKey!));
             return (
               <div key={item.name}>
                 <button
