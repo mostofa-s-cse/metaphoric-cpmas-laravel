@@ -45,18 +45,23 @@ class CashIn extends Model
             }
 
             // ── 3. Bank account balance ───────────────────────────────────
-            app(BankAccountService::class)->applyCredit(
-                $cashIn->bankOrCash,
-                $cashIn->paymentMethod,
-                (float) $cashIn->amountNumeric,
-                [
-                    'referenceId'   => $cashIn->id,
-                    'referenceType' => self::class,
-                    'date'          => $cashIn->date,
-                    'description'   => $cashIn->clientName,
-                    'category'      => $cashIn->source,
-                ]
-            );
+            // Only non-project cash-in (office/company income) touches the
+            // wallet — project cash-in is tracked purely via project_balances
+            // / project_ledger_entries and must stay unrelated to the bank wallet.
+            if (!$cashIn->projectId) {
+                app(BankAccountService::class)->applyCredit(
+                    $cashIn->bankOrCash,
+                    $cashIn->paymentMethod,
+                    (float) $cashIn->amountNumeric,
+                    [
+                        'referenceId'   => $cashIn->id,
+                        'referenceType' => self::class,
+                        'date'          => $cashIn->date,
+                        'description'   => $cashIn->clientName,
+                        'category'      => $cashIn->source,
+                    ]
+                );
+            }
         });
 
         static::updated(function (CashIn $cashIn) {
@@ -89,21 +94,27 @@ class CashIn extends Model
             }
 
             // ── Bank account balance ───────────────────────────────────────
-            // Reverse the old credit, apply the new credit.
-            $bankService->reverseCredit($oldBankOrCash, $oldMethod, $oldAmount, [
-                'referenceId'   => $cashIn->id,
-                'referenceType' => self::class,
-                'date'          => $cashIn->getOriginal('date') ?? $cashIn->date,
-                'description'   => $cashIn->getOriginal('clientName') ?? $cashIn->clientName,
-                'category'      => $cashIn->getOriginal('source') ?? $cashIn->source,
-            ]);
-            $bankService->applyCredit($cashIn->bankOrCash, $cashIn->paymentMethod, $newAmount, [
-                'referenceId'   => $cashIn->id,
-                'referenceType' => self::class,
-                'date'          => $cashIn->date,
-                'description'   => $cashIn->clientName,
-                'category'      => $cashIn->source,
-            ]);
+            // Reverse the old credit only if the old row actually touched the
+            // wallet (was non-project), apply the new credit only if the row
+            // is still non-project after the update.
+            if (!$oldProjectId) {
+                $bankService->reverseCredit($oldBankOrCash, $oldMethod, $oldAmount, [
+                    'referenceId'   => $cashIn->id,
+                    'referenceType' => self::class,
+                    'date'          => $cashIn->getOriginal('date') ?? $cashIn->date,
+                    'description'   => $cashIn->getOriginal('clientName') ?? $cashIn->clientName,
+                    'category'      => $cashIn->getOriginal('source') ?? $cashIn->source,
+                ]);
+            }
+            if (!$newProjectId) {
+                $bankService->applyCredit($cashIn->bankOrCash, $cashIn->paymentMethod, $newAmount, [
+                    'referenceId'   => $cashIn->id,
+                    'referenceType' => self::class,
+                    'date'          => $cashIn->date,
+                    'description'   => $cashIn->clientName,
+                    'category'      => $cashIn->source,
+                ]);
+            }
 
             // ── Project ledger entry ───────────────────────────────────────
             // Remove old ledger entry and re-create with updated values.
@@ -138,18 +149,20 @@ class CashIn extends Model
             }
 
             // ── Bank account balance ───────────────────────────────────────
-            app(BankAccountService::class)->reverseCredit(
-                $cashIn->bankOrCash,
-                $cashIn->paymentMethod,
-                $amount,
-                [
-                    'referenceId'   => $cashIn->id,
-                    'referenceType' => self::class,
-                    'date'          => $cashIn->date,
-                    'description'   => $cashIn->clientName,
-                    'category'      => $cashIn->source,
-                ]
-            );
+            if (!$cashIn->projectId) {
+                app(BankAccountService::class)->reverseCredit(
+                    $cashIn->bankOrCash,
+                    $cashIn->paymentMethod,
+                    $amount,
+                    [
+                        'referenceId'   => $cashIn->id,
+                        'referenceType' => self::class,
+                        'date'          => $cashIn->date,
+                        'description'   => $cashIn->clientName,
+                        'category'      => $cashIn->source,
+                    ]
+                );
+            }
 
             // ── Project ledger entry ───────────────────────────────────────
             ProjectLedgerEntry::where('referenceId', $cashIn->id)

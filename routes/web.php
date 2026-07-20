@@ -95,6 +95,7 @@ Route::middleware(['auth'])->prefix('dashboard')->group(function () {
 
         Route::middleware('permission:module.view.reports')->group(function () {
             Route::middleware('permission:module.tab.reports.financial')->get('/reports', [ReportController::class, 'page'])->name('dashboard.reports');
+            Route::middleware('permission:module.tab.reports.bank')->get('/reports/bank', [ReportController::class, 'bankPage'])->name('dashboard.reports.bank');
             Route::middleware('permission:module.tab.reports.projects')->get('/reports/projects', [ReportController::class, 'projectsPage'])->name('dashboard.reports.projects');
             Route::middleware('permission:module.tab.reports.vendors')->get('/reports/vendors', [ReportController::class, 'vendorsPage'])->name('dashboard.reports.vendors');
             Route::middleware('permission:module.tab.reports.suppliers')->get('/reports/suppliers', [ReportController::class, 'suppliersPage'])->name('dashboard.reports.suppliers');

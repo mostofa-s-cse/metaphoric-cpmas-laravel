@@ -21,7 +21,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 
 import {
   ArrowUpDown, Plus, Search, ArrowUpRight, ArrowDownRight, Calendar, X, Loader2, Trash2,
-  FolderKanban, PiggyBank,
+  FolderKanban,
 } from 'lucide-react';
 
 const paymentMethodEnum = z.enum(['CASH', 'BANK', 'CHEQUE', 'MOBILE_BANKING']);
@@ -487,7 +487,6 @@ export default function TransactionsPage() {
             className="sm:w-[280px]"
           >
             <option value="ALL" className="bg-slate-900 text-slate-200">All Projects</option>
-            <option value="GENERAL" className="bg-slate-900 text-slate-200">General Corporate (No Project)</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id} className="bg-slate-900 text-slate-200">
                 {p.code} - {p.name}
@@ -543,23 +542,8 @@ export default function TransactionsPage() {
               </div>
             </div>
 
-            {/* Bank Wise */}
+            {/* Cash breakdown by mode — kept under Project Wise, no separate Bank Wise section */}
             <div className="pt-4 border-t border-slate-800/60">
-              <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <PiggyBank className="h-3.5 w-3.5 text-amber-400" />
-                Bank Wise
-              </h3>
-              {summary.mainBalance && (
-                <div className="p-4 bg-slate-950/40 border border-amber-500/20 rounded-xl mb-3 max-w-xs">
-                  <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Main Balance</span>
-                  <span className={`text-base font-bold ${summary.mainBalance.available >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
-                    {formatCurrencyLocal(summary.mainBalance.available)}
-                  </span>
-                  <span className="block text-[10px] text-slate-600 mt-0.5">
-                    across all active bank/cash accounts
-                  </span>
-                </div>
-              )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {(['CASH', 'BANK', 'CHEQUE', 'MOBILE_BANKING'] as const).map((mode) => (
                   <div key={mode} className="p-2.5 bg-slate-950/30 border border-slate-800 rounded-lg text-[10px]">

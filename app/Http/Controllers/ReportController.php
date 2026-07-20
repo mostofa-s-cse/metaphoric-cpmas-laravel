@@ -11,6 +11,11 @@ class ReportController extends Controller
         return Inertia::render('Dashboard/Reports/Index');
     }
 
+    public function bankPage()
+    {
+        return Inertia::render('Dashboard/Reports/Bank/Index');
+    }
+
     public function projectsPage()
     {
         return Inertia::render('Dashboard/Reports/Projects/Index');

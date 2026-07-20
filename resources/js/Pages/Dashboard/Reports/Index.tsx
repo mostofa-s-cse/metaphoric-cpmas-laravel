@@ -17,16 +17,18 @@ import {
 const formatVal = (val: number) =>
   `${val < 0 ? '-' : ''}৳ ${Math.abs(val).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Office/overhead categories never draw from a project's own pool (see
+// ExpenseCategory::isOfficeExpense() on the backend) — they belong to the
+// separate Bank Report, not this project-scoped statement.
+const OFFICE_EXPENSE_CATEGORIES = [
+  'OFFICE_RENT', 'UTILITIES', 'TRANSPORTATION', 'FUEL', 'EQUIPMENT_RENTAL', 'EMPLOYEE_SALARY', 'MISCELLANEOUS',
+];
+
 const EXPENSE_CATEGORIES = [
   { key: 'MATERIALS', label: 'Materials Cost' },
   { key: 'LABOR', label: 'Labor Cost' },
-  { key: 'EMPLOYEE_SALARY', label: 'Employee Salaries' },
   { key: 'VENDOR_PAYMENT', label: 'Vendor Milestones' },
-  { key: 'OFFICE_RENT', label: 'Office Rent & Admin' },
-  { key: 'UTILITIES', label: 'Utilities & Internet' },
-  { key: 'TRANSPORTATION', label: 'Transportation Costs' },
-  { key: 'FUEL', label: 'Fuel Expenses' },
-  { key: 'EQUIPMENT_RENTAL', label: 'Equipment Rental' },
+  { key: 'SUPPLIER_PAYMENT', label: 'Supplier Payments' },
 ];
 const KNOWN_CATS = EXPENSE_CATEGORIES.map((c) => c.key);
 
@@ -105,20 +107,25 @@ export default function ReportsPage() {
     };
   }, [user, startDate, endDate]);
 
-  // Apply project filter
-  const cashIns = useMemo(() =>
-    selectedProjectId === 'all'
-      ? allCashIns
-      : allCashIns.filter((ci: any) => ci.projectId === selectedProjectId),
-    [allCashIns, selectedProjectId]
-  );
+  // This statement is project-scoped only — general/corporate cash in (no
+  // project) and office/overhead cash out (rent, utilities, salaries, ...)
+  // never belong here, even under "All Projects". They live in the separate
+  // Bank Report instead.
+  const cashIns = useMemo(() => {
+    const projectOnly = allCashIns.filter((ci: any) => !!ci.projectId);
+    return selectedProjectId === 'all'
+      ? projectOnly
+      : projectOnly.filter((ci: any) => ci.projectId === selectedProjectId);
+  }, [allCashIns, selectedProjectId]);
 
-  const cashOuts = useMemo(() =>
-    selectedProjectId === 'all'
-      ? allCashOuts
-      : allCashOuts.filter((co: any) => co.projectId === selectedProjectId),
-    [allCashOuts, selectedProjectId]
-  );
+  const cashOuts = useMemo(() => {
+    const projectOnly = allCashOuts.filter(
+      (co: any) => !!co.projectId && !OFFICE_EXPENSE_CATEGORIES.includes(co.expenseCategory)
+    );
+    return selectedProjectId === 'all'
+      ? projectOnly
+      : projectOnly.filter((co: any) => co.projectId === selectedProjectId);
+  }, [allCashOuts, selectedProjectId]);
 
   // Core numbers
   const totalCashIn = cashIns.reduce((s: number, ci: any) => s + ci.amount, 0);
@@ -145,7 +152,9 @@ export default function ReportsPage() {
 
     return filtered.map((p: any) => {
       const pCashIns = allCashIns.filter((ci: any) => ci.projectId === p.id);
-      const pCashOuts = allCashOuts.filter((co: any) => co.projectId === p.id);
+      const pCashOuts = allCashOuts.filter(
+        (co: any) => co.projectId === p.id && !OFFICE_EXPENSE_CATEGORIES.includes(co.expenseCategory)
+      );
       const revenue = pCashIns.reduce((s: number, ci: any) => s + ci.amount, 0) || p.estimatedBudget;
       const totalCost = pCashOuts.reduce((s: number, co: any) => s + co.amount, 0);
       const grossProfit = revenue - totalCost;
@@ -398,7 +407,8 @@ export default function ReportsPage() {
               Financial Statements & Reports
             </h1>
             <p className="text-slate-500 text-xs mt-1">
-              Profit & loss statement, cash flow reconciliation, and project profitability audit.
+              Project-linked profit &amp; loss, cash flow reconciliation, and profitability audit. General
+              corporate/bank cash flow lives in the separate Bank Report.
             </p>
           </div>
 

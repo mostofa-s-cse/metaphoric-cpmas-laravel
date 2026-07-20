@@ -90,6 +90,7 @@ return [
         'route' => 'dashboard.reports',
         'tabs'  => [
             'financial'  => ['label' => 'Financial Statement'],
+            'bank'       => ['label' => 'Bank Report'],
             'projects'   => ['label' => 'Project Report'],
             'vendors'    => ['label' => 'Vendor Report'],
             'suppliers'  => ['label' => 'Supplier Report'],

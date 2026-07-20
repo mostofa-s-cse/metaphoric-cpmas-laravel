@@ -80,13 +80,17 @@ class BankAccountService
     {
         $before = (float) $account->currentBalance;
 
-        $totalIn = \App\Models\CashIn::all(['id', 'bankOrCash', 'paymentMethod', 'amountNumeric'])
-            ->filter(fn ($c) => $this->resolve($c->bankOrCash, $c->paymentMethod)?->id === $account->id)
+        // Project cash-in and vendor/supplier/material/labour cash-out never
+        // touch the office wallet — excluded here the same way the model
+        // events skip them, so reconcile can't re-add project money into it.
+        $totalIn = \App\Models\CashIn::all(['id', 'bankOrCash', 'paymentMethod', 'amountNumeric', 'projectId'])
+            ->filter(fn ($c) => !$c->projectId && $this->resolve($c->bankOrCash, $c->paymentMethod)?->id === $account->id)
             ->sum('amountNumeric');
 
-        $totalOut = \App\Models\CashOut::all(['id', 'bankAccountId', 'paymentMethod', 'amountNumeric'])
-            ->filter(fn ($c) => $c->bankAccountId === $account->id
-                || (!$c->bankAccountId && $this->resolve(null, $c->paymentMethod)?->id === $account->id))
+        $totalOut = \App\Models\CashOut::all(['id', 'bankAccountId', 'paymentMethod', 'amountNumeric', 'vendorId', 'supplierId', 'materialId', 'labourId'])
+            ->filter(fn ($c) => !$c->vendorId && !$c->supplierId && !$c->materialId && !$c->labourId
+                && ($c->bankAccountId === $account->id
+                    || (!$c->bankAccountId && $this->resolve(null, $c->paymentMethod)?->id === $account->id)))
             ->sum('amountNumeric');
 
         $account->totalIn      = $totalIn;

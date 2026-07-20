@@ -29,6 +29,12 @@ class CashOut extends Model
     // pool and NEVER deduct from a project's own balance, even if projectId
     // is set on the row (it is still recorded in the project ledger for
     // reference, but the spending bucket is always GLOBAL).
+    //
+    // WALLET RULE: bank_accounts is the office-management wallet, kept fully
+    // separate from project work. A CashOut that pays a vendor, supplier,
+    // material, or labour never touches it — only office expenses and
+    // employee salary payments (and anything else with none of those four
+    // FKs set) debit the wallet.
     protected static function booted()
     {
         static::created(function (CashOut $cashOut) {
@@ -56,21 +62,25 @@ class CashOut extends Model
             // ── Bank account balance ─────────────────────────────────────────
             // A specific bankAccountId (office/global expenses, EMPLOYEE_SALARY)
             // debits that exact account; otherwise fall back to the
-            // paymentMethod-guess used by every other category.
-            $ledgerMeta = [
-                'referenceId'   => $cashOut->id,
-                'referenceType' => self::class,
-                'date'          => $cashOut->date,
-                'description'   => $cashOut->paidTo,
-                'category'      => $cashOut->expenseCategory,
-            ];
+            // paymentMethod-guess used by every other category. Skipped
+            // entirely for vendor/supplier/material/labour payments — those
+            // are project work, not office-wallet spend.
+            if (self::touchesBankWallet($cashOut->vendorId, $cashOut->supplierId, $cashOut->materialId, $cashOut->labourId)) {
+                $ledgerMeta = [
+                    'referenceId'   => $cashOut->id,
+                    'referenceType' => self::class,
+                    'date'          => $cashOut->date,
+                    'description'   => $cashOut->paidTo,
+                    'category'      => $cashOut->expenseCategory,
+                ];
 
-            if ($cashOut->bankAccountId) {
-                BankAccount::find($cashOut->bankAccountId)?->applyDebit((float) $cashOut->amountNumeric, $ledgerMeta);
-            } else {
-                app(BankAccountService::class)->applyDebit(
-                    null, $cashOut->paymentMethod, (float) $cashOut->amountNumeric, $ledgerMeta
-                );
+                if ($cashOut->bankAccountId) {
+                    BankAccount::find($cashOut->bankAccountId)?->applyDebit((float) $cashOut->amountNumeric, $ledgerMeta);
+                } else {
+                    app(BankAccountService::class)->applyDebit(
+                        null, $cashOut->paymentMethod, (float) $cashOut->amountNumeric, $ledgerMeta
+                    );
+                }
             }
         });
 
@@ -90,6 +100,16 @@ class CashOut extends Model
             $oldMethod = $cashOut->getOriginal('paymentMethod');
             $newAmount = (float) $cashOut->amountNumeric;
 
+            $oldTouchedWallet = self::touchesBankWallet(
+                $cashOut->getOriginal('vendorId'),
+                $cashOut->getOriginal('supplierId'),
+                $cashOut->getOriginal('materialId'),
+                $cashOut->getOriginal('labourId')
+            );
+            $newTouchesWallet = self::touchesBankWallet(
+                $cashOut->vendorId, $cashOut->supplierId, $cashOut->materialId, $cashOut->labourId
+            );
+
             $oldLedgerMeta = [
                 'referenceId'   => $cashOut->id,
                 'referenceType' => self::class,
@@ -105,16 +125,20 @@ class CashOut extends Model
                 'category'      => $cashOut->expenseCategory,
             ];
 
-            if ($oldBankAccountId) {
-                BankAccount::find($oldBankAccountId)?->reverseDebit($oldAmount, $oldLedgerMeta);
-            } else {
-                app(BankAccountService::class)->reverseDebit(null, $oldMethod, $oldAmount, $oldLedgerMeta);
+            if ($oldTouchedWallet) {
+                if ($oldBankAccountId) {
+                    BankAccount::find($oldBankAccountId)?->reverseDebit($oldAmount, $oldLedgerMeta);
+                } else {
+                    app(BankAccountService::class)->reverseDebit(null, $oldMethod, $oldAmount, $oldLedgerMeta);
+                }
             }
 
-            if ($cashOut->bankAccountId) {
-                BankAccount::find($cashOut->bankAccountId)?->applyDebit($newAmount, $newLedgerMeta);
-            } else {
-                app(BankAccountService::class)->applyDebit(null, $cashOut->paymentMethod, $newAmount, $newLedgerMeta);
+            if ($newTouchesWallet) {
+                if ($cashOut->bankAccountId) {
+                    BankAccount::find($cashOut->bankAccountId)?->applyDebit($newAmount, $newLedgerMeta);
+                } else {
+                    app(BankAccountService::class)->applyDebit(null, $cashOut->paymentMethod, $newAmount, $newLedgerMeta);
+                }
             }
 
             // ── Project ledger entry ───────────────────────────────────────
@@ -146,18 +170,20 @@ class CashOut extends Model
             );
 
             // ── Bank account balance ─────────────────────────────────────────
-            $ledgerMeta = [
-                'referenceId'   => $cashOut->id,
-                'referenceType' => self::class,
-                'date'          => $cashOut->date,
-                'description'   => $cashOut->paidTo,
-                'category'      => $cashOut->expenseCategory,
-            ];
+            if (self::touchesBankWallet($cashOut->vendorId, $cashOut->supplierId, $cashOut->materialId, $cashOut->labourId)) {
+                $ledgerMeta = [
+                    'referenceId'   => $cashOut->id,
+                    'referenceType' => self::class,
+                    'date'          => $cashOut->date,
+                    'description'   => $cashOut->paidTo,
+                    'category'      => $cashOut->expenseCategory,
+                ];
 
-            if ($cashOut->bankAccountId) {
-                BankAccount::find($cashOut->bankAccountId)?->reverseDebit($amount, $ledgerMeta);
-            } else {
-                app(BankAccountService::class)->reverseDebit(null, $cashOut->paymentMethod, $amount, $ledgerMeta);
+                if ($cashOut->bankAccountId) {
+                    BankAccount::find($cashOut->bankAccountId)?->reverseDebit($amount, $ledgerMeta);
+                } else {
+                    app(BankAccountService::class)->reverseDebit(null, $cashOut->paymentMethod, $amount, $ledgerMeta);
+                }
             }
 
             // ── Project ledger entry ───────────────────────────────────────
@@ -165,6 +191,15 @@ class CashOut extends Model
                 ->where('referenceType', self::class)
                 ->delete();
         });
+    }
+
+    // A CashOut touches the office bank wallet unless it's paying a vendor,
+    // supplier, material, or labour — those are project work and must stay
+    // unrelated to the wallet (employee salary and plain office expenses
+    // still touch it).
+    private static function touchesBankWallet(?string $vendorId, ?string $supplierId, ?string $materialId, ?string $labourId): bool
+    {
+        return !$vendorId && !$supplierId && !$materialId && !$labourId;
     }
 
     protected $table = 'cash_outs';

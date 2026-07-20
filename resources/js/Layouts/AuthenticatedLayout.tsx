@@ -51,6 +51,7 @@ const navItems: NavItem[] = [
     name: 'Reports', href: '/dashboard/reports', routeName: 'dashboard.reports', icon: TrendingUp, moduleKey: 'reports',
     children: [
       { name: 'Financial Statement', href: '/dashboard/reports',           routeName: 'dashboard.reports',           icon: TrendingUp, moduleKey: 'reports', tabKey: 'financial' },
+      { name: 'Bank Report',         href: '/dashboard/reports/bank',      routeName: 'dashboard.reports.bank',      icon: Landmark,   moduleKey: 'reports', tabKey: 'bank' },
       { name: 'Project Report',      href: '/dashboard/reports/projects',  routeName: 'dashboard.reports.projects',  icon: TrendingUp, moduleKey: 'reports', tabKey: 'projects' },
       { name: 'Vendor Report',       href: '/dashboard/reports/vendors',   routeName: 'dashboard.reports.vendors',   icon: TrendingUp, moduleKey: 'reports', tabKey: 'vendors' },
       { name: 'Supplier Report',     href: '/dashboard/reports/suppliers', routeName: 'dashboard.reports.suppliers', icon: TrendingUp, moduleKey: 'reports', tabKey: 'suppliers' },
