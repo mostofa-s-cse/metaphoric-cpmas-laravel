@@ -20,7 +20,8 @@ import { useCrudMutations } from '@/hooks/useCrudMutations';
 import { usePermissions } from '@/hooks/usePermissions';
 
 import {
-  ArrowUpDown, Plus, Search, ArrowUpRight, ArrowDownRight, Calendar, X, Loader2, Trash2
+  ArrowUpDown, Plus, Search, ArrowUpRight, ArrowDownRight, Calendar, X, Loader2, Trash2,
+  FolderKanban, PiggyBank,
 } from 'lucide-react';
 
 const paymentMethodEnum = z.enum(['CASH', 'BANK', 'CHEQUE', 'MOBILE_BANKING']);
@@ -495,66 +496,83 @@ export default function TransactionsPage() {
           </Select>
         </div>
 
-        {/* Cash Flow Summary */}
+        {/* Cash Flow Summary — split the same way as the Executive Dashboard:
+            Project Wise (this project/scope's own cash flow) vs Bank Wise
+            (actual bank/cash account balance + which channel money moved
+            through), instead of one undifferentiated row of cards. */}
         {summary && (
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-              <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-xl">
-                <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Total Cash In</span>
-                <span className="text-base font-bold text-emerald-400 flex items-center gap-1.5">
-                  <ArrowUpRight className="h-4 w-4" />
-                  {formatCurrencyLocal(summary.cashIn.total)}
-                </span>
+          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 space-y-5">
+            {/* Project Wise */}
+            <div>
+              <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <FolderKanban className="h-3.5 w-3.5 text-cyan-400" />
+                Project Wise
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-xl">
+                  <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Total Cash In</span>
+                  <span className="text-base font-bold text-emerald-400 flex items-center gap-1.5">
+                    <ArrowUpRight className="h-4 w-4" />
+                    {formatCurrencyLocal(summary.cashIn.total)}
+                  </span>
+                </div>
+                <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-xl">
+                  <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Total Cash Out</span>
+                  <span className="text-base font-bold text-rose-400 flex items-center gap-1.5">
+                    <ArrowDownRight className="h-4 w-4" />
+                    {formatCurrencyLocal(summary.cashOut.total)}
+                  </span>
+                </div>
+                <div className="p-4 bg-slate-950/40 border border-cyan-500/20 rounded-xl">
+                  <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Net</span>
+                  <span className={`text-base font-bold ${summary.net >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+                    {formatCurrencyLocal(summary.net)}
+                  </span>
+                </div>
+                {summary.projectBalance && (
+                  <div className="p-4 bg-slate-950/40 border border-amber-500/20 rounded-xl">
+                    <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Project Balance Available</span>
+                    <span className={`text-base font-bold ${summary.projectBalance.available >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                      {formatCurrencyLocal(summary.projectBalance.available)}
+                    </span>
+                    <span className="block text-[10px] text-slate-600 mt-0.5">
+                      of {formatCurrencyLocal(summary.projectBalance.allocated)} paid-in for this project
+                    </span>
+                  </div>
+                )}
               </div>
-              <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-xl">
-                <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Total Cash Out</span>
-                <span className="text-base font-bold text-rose-400 flex items-center gap-1.5">
-                  <ArrowDownRight className="h-4 w-4" />
-                  {formatCurrencyLocal(summary.cashOut.total)}
-                </span>
-              </div>
-              <div className="p-4 bg-slate-950/40 border border-cyan-500/20 rounded-xl">
-                <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Net</span>
-                <span className={`text-base font-bold ${summary.net >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
-                  {formatCurrencyLocal(summary.net)}
-                </span>
-              </div>
+            </div>
+
+            {/* Bank Wise */}
+            <div className="pt-4 border-t border-slate-800/60">
+              <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <PiggyBank className="h-3.5 w-3.5 text-amber-400" />
+                Bank Wise
+              </h3>
               {summary.mainBalance && (
-                <div className="p-4 bg-slate-950/40 border border-amber-500/20 rounded-xl">
-                  <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Main Balance Available</span>
+                <div className="p-4 bg-slate-950/40 border border-amber-500/20 rounded-xl mb-3 max-w-xs">
+                  <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Main Balance</span>
                   <span className={`text-base font-bold ${summary.mainBalance.available >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
                     {formatCurrencyLocal(summary.mainBalance.available)}
                   </span>
                   <span className="block text-[10px] text-slate-600 mt-0.5">
-                    of {formatCurrencyLocal(summary.mainBalance.allocated)} total paid-in
+                    across all active bank/cash accounts
                   </span>
                 </div>
               )}
-              {summary.projectBalance && (
-                <div className="p-4 bg-slate-950/40 border border-amber-500/20 rounded-xl">
-                  <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Project Balance Available</span>
-                  <span className={`text-base font-bold ${summary.projectBalance.available >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
-                    {formatCurrencyLocal(summary.projectBalance.available)}
-                  </span>
-                  <span className="block text-[10px] text-slate-600 mt-0.5">
-                    of {formatCurrencyLocal(summary.projectBalance.allocated)} paid-in for this project
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 border-t border-slate-800/60">
-              {(['CASH', 'BANK', 'CHEQUE', 'MOBILE_BANKING'] as const).map((mode) => (
-                <div key={mode} className="p-2.5 bg-slate-950/30 border border-slate-800 rounded-lg text-[10px]">
-                  <span className="block text-slate-500 font-bold uppercase tracking-wide mb-1">{mode.replace('_', ' ')}</span>
-                  <span className="block text-emerald-400 font-semibold">
-                    +{formatCurrencyLocal(summary.cashIn.byMode[mode] || 0)}
-                  </span>
-                  <span className="block text-rose-400 font-semibold">
-                    -{formatCurrencyLocal(summary.cashOut.byMode[mode] || 0)}
-                  </span>
-                </div>
-              ))}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(['CASH', 'BANK', 'CHEQUE', 'MOBILE_BANKING'] as const).map((mode) => (
+                  <div key={mode} className="p-2.5 bg-slate-950/30 border border-slate-800 rounded-lg text-[10px]">
+                    <span className="block text-slate-500 font-bold uppercase tracking-wide mb-1">{mode.replace('_', ' ')}</span>
+                    <span className="block text-emerald-400 font-semibold">
+                      +{formatCurrencyLocal(summary.cashIn.byMode[mode] || 0)}
+                    </span>
+                    <span className="block text-rose-400 font-semibold">
+                      -{formatCurrencyLocal(summary.cashOut.byMode[mode] || 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

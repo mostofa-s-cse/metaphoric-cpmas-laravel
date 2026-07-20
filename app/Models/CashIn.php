@@ -48,7 +48,14 @@ class CashIn extends Model
             app(BankAccountService::class)->applyCredit(
                 $cashIn->bankOrCash,
                 $cashIn->paymentMethod,
-                (float) $cashIn->amountNumeric
+                (float) $cashIn->amountNumeric,
+                [
+                    'referenceId'   => $cashIn->id,
+                    'referenceType' => self::class,
+                    'date'          => $cashIn->date,
+                    'description'   => $cashIn->clientName,
+                    'category'      => $cashIn->source,
+                ]
             );
         });
 
@@ -83,8 +90,20 @@ class CashIn extends Model
 
             // ── Bank account balance ───────────────────────────────────────
             // Reverse the old credit, apply the new credit.
-            $bankService->reverseCredit($oldBankOrCash, $oldMethod, $oldAmount);
-            $bankService->applyCredit($cashIn->bankOrCash, $cashIn->paymentMethod, $newAmount);
+            $bankService->reverseCredit($oldBankOrCash, $oldMethod, $oldAmount, [
+                'referenceId'   => $cashIn->id,
+                'referenceType' => self::class,
+                'date'          => $cashIn->getOriginal('date') ?? $cashIn->date,
+                'description'   => $cashIn->getOriginal('clientName') ?? $cashIn->clientName,
+                'category'      => $cashIn->getOriginal('source') ?? $cashIn->source,
+            ]);
+            $bankService->applyCredit($cashIn->bankOrCash, $cashIn->paymentMethod, $newAmount, [
+                'referenceId'   => $cashIn->id,
+                'referenceType' => self::class,
+                'date'          => $cashIn->date,
+                'description'   => $cashIn->clientName,
+                'category'      => $cashIn->source,
+            ]);
 
             // ── Project ledger entry ───────────────────────────────────────
             // Remove old ledger entry and re-create with updated values.
@@ -122,7 +141,14 @@ class CashIn extends Model
             app(BankAccountService::class)->reverseCredit(
                 $cashIn->bankOrCash,
                 $cashIn->paymentMethod,
-                $amount
+                $amount,
+                [
+                    'referenceId'   => $cashIn->id,
+                    'referenceType' => self::class,
+                    'date'          => $cashIn->date,
+                    'description'   => $cashIn->clientName,
+                    'category'      => $cashIn->source,
+                ]
             );
 
             // ── Project ledger entry ───────────────────────────────────────

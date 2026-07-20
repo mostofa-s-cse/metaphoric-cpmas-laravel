@@ -100,7 +100,7 @@ export default function EmployeesPage() {
     { key: 'employees' as const, canSee: canTab('employees', 'employees') },
     { key: 'salary' as const, canSee: canTab('employees', 'salary') },
   ];
-  const [activeTab, setActiveTab] = useState<'expense' | 'employees' | 'salary'>('employees');
+  const [activeTab, setActiveTab] = useState<'expense' | 'employees' | 'salary'>('expense');
   useEffect(() => {
     if (TABS.find((t) => t.key === activeTab)?.canSee) return;
     const firstAllowed = TABS.find((t) => t.canSee);

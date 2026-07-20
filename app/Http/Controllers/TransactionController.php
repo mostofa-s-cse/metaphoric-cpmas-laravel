@@ -330,8 +330,18 @@ class TransactionController extends Controller
             $cashOutByMode[$mode] = (float) ($cashOutByModeRows[$mode] ?? 0);
         }
 
+        // Office/overhead categories (OFFICE_RENT, UTILITIES, EMPLOYEE_SALARY, ...)
+        // never draw from a project's own pool — they're always paid from a
+        // specific Bank Account (see ExpenseCategory::isOfficeExpense() /
+        // CashOut::booted()). "Total Cash Out"/"Net" here are shown under the
+        // Project Wise heading, so they must exclude office spend the same
+        // way ProjectLedgerController::summary() already does — otherwise an
+        // office rent payment (a Bank Wise expense) makes project cash flow
+        // look spent down by money that never touched it.
+        $officeCategories = \App\Models\ExpenseCategory::where('isOfficeExpense', true)->pluck('code');
+
         $cashInTotal = (float) (clone $cashInQuery)->sum('amountNumeric');
-        $cashOutTotal = (float) (clone $cashOutQuery)->sum('amountNumeric');
+        $cashOutTotal = (float) (clone $cashOutQuery)->whereNotIn('expenseCategory', $officeCategories)->sum('amountNumeric');
 
         $summary = [
             'cashIn' => ['total' => $cashInTotal, 'byMode' => $cashInByMode],
@@ -339,10 +349,15 @@ class TransactionController extends Controller
             'net' => $cashInTotal - $cashOutTotal,
         ];
 
-        // Global pool (combined paid-in across all projects) always shows, regardless of filter.
+        // Main Balance = real, current cash across all active bank/cash accounts
+        // (not the legacy CompanyBalance paid-in pool). Always shows, regardless
+        // of filter. NOTE: this is display-only — actual validation for the
+        // legacy GLOBAL-non-office categories still runs against
+        // totalPaidAmount()/availableBalance() in HasMainBalance, unchanged.
+        $bankTotal = \App\Models\BankAccount::totalBalance();
         $summary['mainBalance'] = [
-            'allocated' => $this->totalPaidAmount(),
-            'available' => $this->availableBalance(null),
+            'allocated' => $bankTotal,
+            'available' => $bankTotal,
         ];
 
         if ($projectId && $projectId !== 'GENERAL') {

@@ -55,12 +55,12 @@ interface BankAccount {
 
 interface HistoryEntry {
   id: string;
-  type: 'CASH_IN' | 'CASH_OUT' | 'ADJUSTMENT';
+  type: 'DEBIT' | 'CREDIT' | 'REVERSAL_DEBIT' | 'REVERSAL_CREDIT' | 'ADJUSTMENT' | 'RECONCILE';
   date: string;
   description: string;
   category: string;
   amount: number;
-  referenceNumber?: string;
+  balanceAfter: number;
 }
 
 interface Summary {
@@ -653,7 +653,7 @@ export default function BankAccountsPage() {
                       <th className="py-3 px-4">Type</th>
                       <th className="py-3 px-4">Description</th>
                       <th className="py-3 px-4">Category</th>
-                      <th className="py-3 px-4">Reference</th>
+                      <th className="py-3 px-4 text-right">Balance After</th>
                       <th className="py-3 px-4 text-right">Amount</th>
                     </tr>
                   </thead>
@@ -672,14 +672,23 @@ export default function BankAccountsPage() {
                       </tr>
                     ) : (
                       history.map((h) => {
-                        const isPositive = h.type === 'ADJUSTMENT' ? h.amount >= 0 : h.type === 'CASH_IN';
-                        const typeLabel = h.type === 'ADJUSTMENT' ? 'Adjustment' : h.type === 'CASH_IN' ? 'Cash In' : 'Cash Out';
+                        const isPositive = h.type === 'ADJUSTMENT' || h.type === 'RECONCILE'
+                          ? h.amount >= 0
+                          : h.type === 'CREDIT' || h.type === 'REVERSAL_DEBIT';
+                        const typeLabel = {
+                          DEBIT: 'Cash Out',
+                          CREDIT: 'Cash In',
+                          REVERSAL_DEBIT: 'Reversal (Refund)',
+                          REVERSAL_CREDIT: 'Reversal (Deduct)',
+                          ADJUSTMENT: 'Adjustment',
+                          RECONCILE: 'Reconciled',
+                        }[h.type];
                         return (
                           <tr key={`${h.type}-${h.id}`} className="hover:bg-slate-900/40 transition-colors">
                             <td className="py-3 px-4 text-slate-400">{new Date(h.date).toLocaleDateString()}</td>
                             <td className="py-3 px-4">
                               <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide ${
-                                h.type === 'ADJUSTMENT'
+                                h.type === 'ADJUSTMENT' || h.type === 'RECONCILE'
                                   ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                                   : isPositive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                               }`}>
@@ -688,7 +697,7 @@ export default function BankAccountsPage() {
                             </td>
                             <td className="py-3 px-4 text-slate-200 font-medium">{h.description || '—'}</td>
                             <td className="py-3 px-4 text-slate-400">{h.category ? h.category.replace(/_/g, ' ') : '—'}</td>
-                            <td className="py-3 px-4 text-slate-500">{h.referenceNumber || '—'}</td>
+                            <td className="py-3 px-4 text-right text-slate-500">{fmt(h.balanceAfter)}</td>
                             <td className={`py-3 px-4 text-right font-bold ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
                               {isPositive ? '+' : '-'}{fmt(Math.abs(h.amount))}
                             </td>

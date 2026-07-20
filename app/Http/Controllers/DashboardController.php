@@ -37,6 +37,7 @@ class DashboardController extends Controller
             'supplierDue'       => 0,
             'vendorDue'         => 0,
             'salaryDue'         => 0,
+            'labourDue'         => 0,
             'cashBalance'       => 0,
             'bankBalance'       => 0,
             'bankAccountCount'  => 0,
@@ -108,12 +109,33 @@ class DashboardController extends Controller
                     ];
                 }
 
+                // Labour due: wages owed (present-day attendance × dailyWage)
+                // minus wages already paid (LABOR-category cash-outs) — unlike
+                // Salary, Labour has no dueAmount column, so this is computed
+                // rather than summed. dailyWage is EncryptedFloat, so the
+                // per-labour multiply happens in PHP (same tradeoff as other
+                // encrypted-column totals elsewhere in this codebase).
+                $presentCounts = \App\Models\Attendance::where('status', 'PRESENT')
+                    ->selectRaw('labourId, count(*) as cnt')
+                    ->groupBy('labourId')
+                    ->pluck('cnt', 'labourId');
+
+                $totalWageOwed = 0.0;
+                if ($presentCounts->isNotEmpty()) {
+                    foreach (Labour::whereIn('id', $presentCounts->keys())->get(['id', 'dailyWage']) as $labour) {
+                        $totalWageOwed += (float) $labour->dailyWage * $presentCounts[$labour->id];
+                    }
+                }
+                $totalWagePaid = (float) CashOut::where('expenseCategory', 'LABOR')->sum('amountNumeric');
+                $labourDue = max(0.0, $totalWageOwed - $totalWagePaid);
+
                 return [
                     'totalCashIn'       => (float) CashIn::sum('amountNumeric'),
                     'totalCashOut'      => (float) CashOut::sum('amountNumeric'),
                     'supplierDue'       => (float) Supplier::sum('currentDueNumeric'),
                     'vendorDue'         => (float) Vendor::sum('dueAmountNumeric'),
                     'salaryDue'         => (float) Salary::sum('dueAmountNumeric'),
+                    'labourDue'         => $labourDue,
                     'expenseBreakdown'  => $expenseBreakdown,
                     'projectComparison' => $projectComparison,
                     'monthlyTrends'     => $monthlyTrends,
@@ -122,11 +144,11 @@ class DashboardController extends Controller
 
             $summary['totalCashIn']  = $financials['totalCashIn'];
             $summary['totalCashOut'] = $financials['totalCashOut'];
-            $summary['cashBalance']  = $summary['totalCashIn'] - $summary['totalCashOut'];
-            $summary['netProfit']    = $summary['cashBalance'];
+            $summary['netProfit']    = $summary['totalCashIn'] - $summary['totalCashOut'];
             $summary['supplierDue']  = $financials['supplierDue'];
             $summary['vendorDue']    = $financials['vendorDue'];
             $summary['salaryDue']    = $financials['salaryDue'];
+            $summary['labourDue']    = $financials['labourDue'];
             $expenseBreakdown  = $financials['expenseBreakdown'];
             $projectComparison = $financials['projectComparison'];
             $monthlyTrends     = $financials['monthlyTrends'];
@@ -144,8 +166,16 @@ class DashboardController extends Controller
 
             // Bank balance: combined currentBalance across every active
             // Bank/Cash/Mobile Banking account (Bank Accounts menu).
-            $summary['bankBalance']      = (float) BankAccount::where('isActive', true)->sum('currentBalance');
+            $summary['bankBalance']      = BankAccount::totalBalance();
             $summary['bankAccountCount'] = BankAccount::where('isActive', true)->count();
+
+            // Cash balance: currentBalance of active CASH-type accounts only
+            // (physical cash in hand) — NOT totalCashIn - totalCashOut, which
+            // used to net every CashOut regardless of which account it hit,
+            // so a bank-routed expense wrongly dragged this figure negative.
+            $summary['cashBalance'] = (float) BankAccount::where('isActive', true)
+                ->where('accountType', 'CASH')
+                ->sum('currentBalance');
 
         } catch (\Throwable $e) {
             report($e);

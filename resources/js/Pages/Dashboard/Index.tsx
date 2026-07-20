@@ -3,8 +3,8 @@ import { Head, usePage } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import {
   FolderKanban, Play, CheckCircle2, Users2, Truck, Briefcase, HardHat,
-  ArrowUpRight, ArrowDownRight, Coins, AlertTriangle, TrendingUp, TrendingDown,
-  Wallet, UserCheck, PiggyBank,
+  ArrowDownRight, Coins, AlertTriangle, TrendingUp, TrendingDown,
+  UserCheck, PiggyBank,
 } from 'lucide-react';
 import { TakaIcon } from '@/Components/ui/TakaIcon';
 import {
@@ -24,7 +24,7 @@ interface Summary {
   totalClients: number; totalSuppliers: number; totalVendors: number;
   totalEmployees: number; totalLabour: number; totalCashIn: number;
   totalCashOut: number; netProfit: number; supplierDue: number;
-  vendorDue: number; salaryDue: number; cashBalance: number;
+  vendorDue: number; salaryDue: number; labourDue: number; cashBalance: number;
   bankBalance: number; bankAccountCount: number;
 }
 
@@ -35,6 +35,32 @@ interface Props {
   projectComparison: { name: string; budget: number; spent: number }[];
 }
 
+interface StatWidget {
+  title: string;
+  value: string | number;
+  desc: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+}
+
+function StatCard({ widget }: { widget: StatWidget }) {
+  const Icon = widget.icon;
+  return (
+    <div className={`p-4 border rounded-2xl flex flex-col justify-between transition-all hover:scale-[1.02] ${widget.color}`}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">{widget.title}</span>
+        <div className="p-1.5 border border-current/10 rounded-lg">
+          <Icon className="h-[18px] w-[18px]" />
+        </div>
+      </div>
+      <div>
+        <span className="text-xl font-bold tracking-tight text-slate-100">{widget.value}</span>
+        <p className="text-[10px] text-slate-500 font-medium mt-0.5">{widget.desc}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardIndex({ summary, expenseBreakdown, monthlyTrends, projectComparison }: Props) {
   const { auth } = usePage().props as any;
   const userRole: string = auth?.user?.role || 'SUPER_ADMIN';
@@ -42,25 +68,37 @@ export default function DashboardIndex({ summary, expenseBreakdown, monthlyTrend
 
   useEffect(() => { setMounted(true); }, []);
 
-  const widgetData = [
-    { title: 'Total Projects',     value: summary.totalProjects,              desc: 'Overall created',            icon: FolderKanban,    color: 'text-cyan-400 border-cyan-500/20 bg-cyan-500/5',      roles: ['SUPER_ADMIN'] },
-    { title: 'Running Projects',   value: summary.runningProjects,            desc: 'Active construction',        icon: Play,            color: 'text-blue-400 border-blue-500/20 bg-blue-500/5',      roles: ['SUPER_ADMIN'] },
-    { title: 'Completed Projects', value: summary.completedProjects,          desc: 'Successfully handed over',   icon: CheckCircle2,    color: 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5', roles: ['SUPER_ADMIN'] },
-    { title: 'Total Clients',      value: summary.totalClients,               desc: 'Corporate partners',         icon: UserCheck,       color: 'text-purple-400 border-purple-500/20 bg-purple-500/5', roles: ['SUPER_ADMIN'] },
-    { title: 'Total Suppliers',    value: summary.totalSuppliers,             desc: 'Material dealers',           icon: Truck,           color: 'text-orange-400 border-orange-500/20 bg-orange-500/5', roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Total Vendors',      value: summary.totalVendors,               desc: 'Specialized teams',          icon: Briefcase,       color: 'text-yellow-400 border-yellow-500/20 bg-yellow-500/5', roles: ['SUPER_ADMIN', 'ADMIN', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Total Employees',    value: summary.totalEmployees,             desc: 'Office & field staff',       icon: Users2,          color: 'text-indigo-400 border-indigo-500/20 bg-indigo-500/5', roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Total Labor',        value: summary.totalLabour,                desc: 'Daily wage workforce',       icon: HardHat,         color: 'text-pink-400 border-pink-500/20 bg-pink-500/5',       roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Total Cash In',      value: formatCurrency(summary.totalCashIn), desc: 'Accumulated revenue',      icon: ArrowUpRight,    color: 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5', roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Total Cash Out',     value: formatCurrency(summary.totalCashOut),desc: 'Accumulated spending',     icon: ArrowDownRight,  color: 'text-rose-400 border-rose-500/20 bg-rose-500/5',       roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Cash Balance',       value: formatCurrency(summary.cashBalance), desc: 'Current cash in hand',     icon: Wallet,          color: 'text-teal-400 border-teal-500/20 bg-teal-500/5',       roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Bank Balance',       value: formatCurrency(summary.bankBalance), desc: `Across ${summary.bankAccountCount} active account${summary.bankAccountCount === 1 ? '' : 's'}`, icon: PiggyBank, color: 'text-amber-400 border-amber-500/20 bg-amber-500/5', roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Supplier Due',       value: formatCurrency(summary.supplierDue), desc: 'Unpaid bills',             icon: Coins,           color: 'text-amber-400 border-amber-500/20 bg-amber-500/5',    roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Vendor Due',         value: formatCurrency(summary.vendorDue),  desc: 'Pending milestones',        icon: AlertTriangle,   color: 'text-red-400 border-red-500/20 bg-red-500/5',          roles: ['SUPER_ADMIN', 'ADMIN', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
-    { title: 'Salary Due',         value: formatCurrency(summary.salaryDue),  desc: 'Employee unpaid salary',    icon: TakaIcon,color: 'text-fuchsia-400 border-fuchsia-500/20 bg-fuchsia-500/5',roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
+  // Grouped so the dashboard reads as two clear stories: the projects/people/
+  // payables side of the business (everything tracked per-project or
+  // per-party, regardless of which bank account eventually pays it), and
+  // the bank side (actual cash sitting in bank/cash accounts + flow in/out
+  // of them) — instead of one long undifferentiated row of 15 cards.
+  const projectWidgets = [
+    { title: 'Total Projects',     value: summary.totalProjects,     desc: 'Overall created',          icon: FolderKanban, color: 'text-cyan-400 border-cyan-500/20 bg-cyan-500/5',          roles: ['SUPER_ADMIN'] },
+    { title: 'Running Projects',   value: summary.runningProjects,   desc: 'Active construction',       icon: Play,         color: 'text-blue-400 border-blue-500/20 bg-blue-500/5',          roles: ['SUPER_ADMIN'] },
+    { title: 'Completed Projects', value: summary.completedProjects, desc: 'Successfully handed over',  icon: CheckCircle2, color: 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5', roles: ['SUPER_ADMIN'] },
+    { title: 'Total Clients',      value: summary.totalClients,      desc: 'Corporate partners',        icon: UserCheck,    color: 'text-purple-400 border-purple-500/20 bg-purple-500/5',    roles: ['SUPER_ADMIN'] },
+    { title: 'Total Suppliers',    value: summary.totalSuppliers,    desc: 'Material dealers',           icon: Truck,        color: 'text-orange-400 border-orange-500/20 bg-orange-500/5',    roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
+    { title: 'Total Vendors',      value: summary.totalVendors,      desc: 'Specialized teams',          icon: Briefcase,    color: 'text-yellow-400 border-yellow-500/20 bg-yellow-500/5',    roles: ['SUPER_ADMIN', 'ADMIN', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
+    { title: 'Total Employees',    value: summary.totalEmployees,    desc: 'Office & field staff',       icon: Users2,       color: 'text-indigo-400 border-indigo-500/20 bg-indigo-500/5',    roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
+    { title: 'Total Labor',        value: summary.totalLabour,       desc: 'Daily wage workforce',       icon: HardHat,      color: 'text-pink-400 border-pink-500/20 bg-pink-500/5',          roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
+    { title: 'Supplier Due',       value: formatCurrency(summary.supplierDue), desc: 'Unpaid bills',          icon: Coins,         color: 'text-amber-400 border-amber-500/20 bg-amber-500/5',       roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
+    { title: 'Vendor Due',         value: formatCurrency(summary.vendorDue),   desc: 'Pending milestones',    icon: AlertTriangle, color: 'text-red-400 border-red-500/20 bg-red-500/5',             roles: ['SUPER_ADMIN', 'ADMIN', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
+    { title: 'Labour Due',         value: formatCurrency(summary.labourDue),   desc: 'Unpaid daily wages',     icon: HardHat,      color: 'text-pink-400 border-pink-500/20 bg-pink-500/5',          roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
   ];
 
-  const allowedWidgets = widgetData.filter((w) => w.roles.includes(userRole));
+  // Strictly bank_accounts-derived figures — total across all accounts,
+  // spending flow out of them, and Employee Salary Due (salary is always
+  // paid out of a specific Bank Account, unlike supplier/vendor/labour dues
+  // which are project-wise liabilities and belong in projectWidgets above).
+  const bankWidgets = [
+    { title: 'Bank Balance',         value: formatCurrency(summary.bankBalance),  desc: `Across ${summary.bankAccountCount} active account${summary.bankAccountCount === 1 ? '' : 's'}`, icon: PiggyBank, color: 'text-amber-400 border-amber-500/20 bg-amber-500/5', roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
+    { title: 'Total Cash Out',       value: formatCurrency(summary.totalCashOut), desc: 'Accumulated spending',   icon: ArrowDownRight, color: 'text-rose-400 border-rose-500/20 bg-rose-500/5',          roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'] },
+    { title: 'Employee Salary Due',  value: formatCurrency(summary.salaryDue),    desc: 'Employee unpaid salary', icon: TakaIcon,       color: 'text-fuchsia-400 border-fuchsia-500/20 bg-fuchsia-500/5', roles: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PROJECT_MANAGER', 'DATA_ENTRY_OPERATOR'] },
+  ];
+
+  const allowedProjectWidgets = projectWidgets.filter((w) => w.roles.includes(userRole));
+  const allowedBankWidgets = bankWidgets.filter((w) => w.roles.includes(userRole));
   const showFinancialCharts = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'DATA_ENTRY_OPERATOR'].includes(userRole);
   const showProjectCharts   = userRole === 'SUPER_ADMIN';
 
@@ -79,29 +117,31 @@ export default function DashboardIndex({ summary, expenseBreakdown, monthlyTrend
           </p>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          {allowedWidgets.map((widget, i) => {
-            const Icon = widget.icon;
-            return (
-              <div
-                key={i}
-                className={`p-4 border rounded-2xl flex flex-col justify-between transition-all hover:scale-[1.02] ${widget.color}`}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">{widget.title}</span>
-                  <div className="p-1.5 border border-current/10 rounded-lg">
-                    <Icon className="h-[18px] w-[18px]" />
-                  </div>
-                </div>
-                <div>
-                  <span className="text-xl font-bold tracking-tight text-slate-100">{widget.value}</span>
-                  <p className="text-[10px] text-slate-500 font-medium mt-0.5">{widget.desc}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {/* Project Overview */}
+        {allowedProjectWidgets.length > 0 && (
+          <div>
+            <h2 className="text-slate-300 text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2">
+              <FolderKanban className="h-4 w-4 text-cyan-400" />
+              Project Overview
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {allowedProjectWidgets.map((widget, i) => <StatCard key={i} widget={widget} />)}
+            </div>
+          </div>
+        )}
+
+        {/* Bank & Finance */}
+        {allowedBankWidgets.length > 0 && (
+          <div>
+            <h2 className="text-slate-300 text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2">
+              <PiggyBank className="h-4 w-4 text-amber-400" />
+              Bank &amp; Finance
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {allowedBankWidgets.map((widget, i) => <StatCard key={i} widget={widget} />)}
+            </div>
+          </div>
+        )}
 
         {/* Financial Charts */}
         {showFinancialCharts && (

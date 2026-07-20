@@ -57,11 +57,19 @@ class CashOut extends Model
             // A specific bankAccountId (office/global expenses, EMPLOYEE_SALARY)
             // debits that exact account; otherwise fall back to the
             // paymentMethod-guess used by every other category.
+            $ledgerMeta = [
+                'referenceId'   => $cashOut->id,
+                'referenceType' => self::class,
+                'date'          => $cashOut->date,
+                'description'   => $cashOut->paidTo,
+                'category'      => $cashOut->expenseCategory,
+            ];
+
             if ($cashOut->bankAccountId) {
-                BankAccount::find($cashOut->bankAccountId)?->applyDebit((float) $cashOut->amountNumeric);
+                BankAccount::find($cashOut->bankAccountId)?->applyDebit((float) $cashOut->amountNumeric, $ledgerMeta);
             } else {
                 app(BankAccountService::class)->applyDebit(
-                    null, $cashOut->paymentMethod, (float) $cashOut->amountNumeric
+                    null, $cashOut->paymentMethod, (float) $cashOut->amountNumeric, $ledgerMeta
                 );
             }
         });
@@ -82,16 +90,31 @@ class CashOut extends Model
             $oldMethod = $cashOut->getOriginal('paymentMethod');
             $newAmount = (float) $cashOut->amountNumeric;
 
+            $oldLedgerMeta = [
+                'referenceId'   => $cashOut->id,
+                'referenceType' => self::class,
+                'date'          => $cashOut->getOriginal('date') ?? $cashOut->date,
+                'description'   => $cashOut->getOriginal('paidTo') ?? $cashOut->paidTo,
+                'category'      => $cashOut->getOriginal('expenseCategory') ?? $cashOut->expenseCategory,
+            ];
+            $newLedgerMeta = [
+                'referenceId'   => $cashOut->id,
+                'referenceType' => self::class,
+                'date'          => $cashOut->date,
+                'description'   => $cashOut->paidTo,
+                'category'      => $cashOut->expenseCategory,
+            ];
+
             if ($oldBankAccountId) {
-                BankAccount::find($oldBankAccountId)?->reverseDebit($oldAmount);
+                BankAccount::find($oldBankAccountId)?->reverseDebit($oldAmount, $oldLedgerMeta);
             } else {
-                app(BankAccountService::class)->reverseDebit(null, $oldMethod, $oldAmount);
+                app(BankAccountService::class)->reverseDebit(null, $oldMethod, $oldAmount, $oldLedgerMeta);
             }
 
             if ($cashOut->bankAccountId) {
-                BankAccount::find($cashOut->bankAccountId)?->applyDebit($newAmount);
+                BankAccount::find($cashOut->bankAccountId)?->applyDebit($newAmount, $newLedgerMeta);
             } else {
-                app(BankAccountService::class)->applyDebit(null, $cashOut->paymentMethod, $newAmount);
+                app(BankAccountService::class)->applyDebit(null, $cashOut->paymentMethod, $newAmount, $newLedgerMeta);
             }
 
             // ── Project ledger entry ───────────────────────────────────────
@@ -123,10 +146,18 @@ class CashOut extends Model
             );
 
             // ── Bank account balance ─────────────────────────────────────────
+            $ledgerMeta = [
+                'referenceId'   => $cashOut->id,
+                'referenceType' => self::class,
+                'date'          => $cashOut->date,
+                'description'   => $cashOut->paidTo,
+                'category'      => $cashOut->expenseCategory,
+            ];
+
             if ($cashOut->bankAccountId) {
-                BankAccount::find($cashOut->bankAccountId)?->reverseDebit($amount);
+                BankAccount::find($cashOut->bankAccountId)?->reverseDebit($amount, $ledgerMeta);
             } else {
-                app(BankAccountService::class)->reverseDebit(null, $cashOut->paymentMethod, $amount);
+                app(BankAccountService::class)->reverseDebit(null, $cashOut->paymentMethod, $amount, $ledgerMeta);
             }
 
             // ── Project ledger entry ───────────────────────────────────────

@@ -33,32 +33,32 @@ class BankAccountService
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    public function applyCredit(?string $accountName, ?string $paymentMethod, float $amount): void
+    public function applyCredit(?string $accountName, ?string $paymentMethod, float $amount, array $meta = []): void
     {
         if ($amount == 0.0) return;
         $account = $this->resolve($accountName, $paymentMethod);
-        $account?->applyCredit($amount);
+        $account?->applyCredit($amount, $meta);
     }
 
-    public function reverseCredit(?string $accountName, ?string $paymentMethod, float $amount): void
+    public function reverseCredit(?string $accountName, ?string $paymentMethod, float $amount, array $meta = []): void
     {
         if ($amount == 0.0) return;
         $account = $this->resolve($accountName, $paymentMethod);
-        $account?->reverseCredit($amount);
+        $account?->reverseCredit($amount, $meta);
     }
 
-    public function applyDebit(?string $accountName, ?string $paymentMethod, float $amount): void
+    public function applyDebit(?string $accountName, ?string $paymentMethod, float $amount, array $meta = []): void
     {
         if ($amount == 0.0) return;
         $account = $this->resolve($accountName, $paymentMethod);
-        $account?->applyDebit($amount);
+        $account?->applyDebit($amount, $meta);
     }
 
-    public function reverseDebit(?string $accountName, ?string $paymentMethod, float $amount): void
+    public function reverseDebit(?string $accountName, ?string $paymentMethod, float $amount, array $meta = []): void
     {
         if ($amount == 0.0) return;
         $account = $this->resolve($accountName, $paymentMethod);
-        $account?->reverseDebit($amount);
+        $account?->reverseDebit($amount, $meta);
     }
 
     /**
@@ -78,6 +78,8 @@ class BankAccountService
      */
     public function reconcile(BankAccount $account): void
     {
+        $before = (float) $account->currentBalance;
+
         $totalIn = \App\Models\CashIn::all(['id', 'bankOrCash', 'paymentMethod', 'amountNumeric'])
             ->filter(fn ($c) => $this->resolve($c->bankOrCash, $c->paymentMethod)?->id === $account->id)
             ->sum('amountNumeric');
@@ -92,18 +94,12 @@ class BankAccountService
         $account->currentBalance = $account->openingBalance + $totalIn - $totalOut;
         $account->save();
 
-        Cache::forget('bank_accounts:summary');
-    }
+        $diff = (float) $account->currentBalance - $before;
+        if ($diff != 0.0) {
+            $account->logReconcile($diff);
+        }
 
-    /**
-     * Public wrapper around resolve() — lets callers (e.g. the account
-     * History endpoint) figure out, after the fact, which account a legacy
-     * CashIn/CashOut row (no direct bankAccountId) actually hit, using the
-     * exact same name-then-type-fallback logic applyCredit/applyDebit use.
-     */
-    public function resolveAccountId(?string $accountName, ?string $paymentMethod): ?string
-    {
-        return $this->resolve($accountName, $paymentMethod)?->id;
+        Cache::forget('bank_accounts:summary');
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

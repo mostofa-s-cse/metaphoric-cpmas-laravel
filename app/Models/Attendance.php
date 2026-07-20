@@ -3,12 +3,13 @@
 namespace App\Models;
 
 use App\Traits\Auditable;
+use App\Traits\BustsDashboardCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class Attendance extends Model
 {
-    use HasUuids, Auditable;
+    use HasUuids, Auditable, BustsDashboardCache;
 
     protected $table = 'attendances';
 
